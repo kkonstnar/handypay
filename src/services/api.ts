@@ -1,0 +1,261 @@
+import { Transaction, Payout, Balance, ApiResponse } from "../types";
+
+// API Base URL - points to our backend
+const API_BASE_URL = "https://handypay-backend.onrender.com";
+
+/**
+ * API Service for handling all backend API calls
+ */
+export class ApiService {
+  private baseURL: string;
+
+  constructor(baseURL: string = API_BASE_URL) {
+    this.baseURL = baseURL;
+  }
+
+  /**
+   * Generic API request handler
+   */
+  private async apiRequest<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<ApiResponse<T>> {
+    try {
+      const url = `${this.baseURL}${endpoint}`;
+      console.log(`🌐 API Request: ${options.method || "GET"} ${url}`);
+
+      const response = await fetch(url, {
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers,
+        },
+        ...options,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error(`❌ API Error ${response.status}:`, data);
+        return {
+          data: null as T,
+          success: false,
+          error:
+            data.message || `HTTP ${response.status}: ${response.statusText}`,
+        };
+      }
+
+      console.log(`✅ API Success:`, data);
+      return {
+        data: data.data || data,
+        success: true,
+        message: data.message,
+      };
+    } catch (error) {
+      console.error(`❌ API Network Error:`, error);
+      return {
+        data: null as T,
+        success: false,
+        error: error instanceof Error ? error.message : "Network error",
+      };
+    }
+  }
+
+  /**
+   * Get user transactions from database
+   */
+  async getUserTransactions(
+    userId: string
+  ): Promise<ApiResponse<Transaction[]>> {
+    if (!userId) {
+      return {
+        data: [],
+        success: false,
+        error: "User ID is required",
+      };
+    }
+
+    return this.apiRequest<Transaction[]>(`/api/transactions/${userId}`);
+  }
+
+  /**
+   * Get user transactions (legacy method for backward compatibility)
+   */
+  async getTransactions(): Promise<ApiResponse<Transaction[]>> {
+    // Return empty array for now - this should be called with user context
+    console.warn(
+      "getTransactions() called without user context. Use getUserTransactions(userId) instead."
+    );
+    return {
+      data: [],
+      success: true,
+    };
+  }
+
+  /**
+   * Cancel a transaction
+   */
+  async cancelTransaction(
+    transactionId: string,
+    userId: string
+  ): Promise<ApiResponse<{ message: string }>> {
+    return this.apiRequest<{ message: string }>("/api/transactions/cancel", {
+      method: "POST",
+      body: JSON.stringify({
+        transactionId,
+        userId,
+      }),
+    });
+  }
+
+  /**
+   * Get user payouts from Stripe
+   */
+  async getPayouts(userId?: string): Promise<ApiResponse<Payout[]>> {
+    if (!userId) {
+      return {
+        data: [],
+        success: false,
+        error: "User ID is required",
+      };
+    }
+
+    return this.apiRequest<Payout[]>(`/api/stripe/payouts/${userId}`);
+  }
+
+  /**
+   * Get user balance from Stripe
+   */
+  async getBalance(userId?: string): Promise<ApiResponse<Balance>> {
+    if (!userId) {
+      return {
+        data: null,
+        success: false,
+        error: "User ID is required",
+      };
+    }
+
+    const response = await this.apiRequest<{
+      balance: number;
+      currency: string;
+      stripeBalance: any[];
+    }>(`/api/stripe/balance/${userId}`);
+
+    // Transform response to match Balance interface
+    if (response.success && response.data) {
+      return {
+        data: {
+          balance: response.data.balance,
+          currency: response.data.currency,
+        },
+        success: true,
+        message: response.message,
+      };
+    }
+
+    return response as ApiResponse<Balance>;
+  }
+
+  /**
+   * Get next payout information
+   */
+  async getNextPayout(userId?: string): Promise<
+    ApiResponse<{
+      date: string;
+      amount: number;
+      currency: string;
+      bankAccountEnding: string;
+      estimatedProcessingDays: number;
+    } | null>
+  > {
+    if (!userId) {
+      return {
+        data: null,
+        success: false,
+        error: "User ID is required",
+      };
+    }
+
+    return this.apiRequest<{
+      date: string;
+      amount: number;
+      currency: string;
+      bankAccountEnding: string;
+      estimatedProcessingDays: number;
+      stripeSchedule: string;
+    } | null>(`/api/stripe/next-payout/${userId}`);
+  }
+
+  /**
+   * Create a new payout (manual payout - payouts are usually automatic)
+   */
+  async createPayout(
+    amount: number,
+    bankAccountId: string
+  ): Promise<ApiResponse<Payout>> {
+    // For now, simulate payout creation - replace with real API call
+    const mockPayout: Payout = {
+      id: `payout_${Date.now()}`,
+      amount,
+      status: "pending",
+      date: new Date().toISOString().split("T")[0],
+      bankAccount: bankAccountId,
+      fee: Math.round(amount * 0.01), // 1% fee
+      description: "Bank transfer payout",
+    };
+
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({
+          data: mockPayout,
+          success: true,
+          message: "Payout request submitted successfully",
+        });
+      }, 1000); // Simulate network delay
+    });
+  }
+
+  /**
+   * Search transactions
+   */
+  async searchTransactions(query: string): Promise<ApiResponse<Transaction[]>> {
+    // For now, return filtered mock data - replace with real API call
+    const allTransactions = await this.getTransactions();
+
+    if (!allTransactions.success || !allTransactions.data) {
+      return allTransactions;
+    }
+
+    const filteredTransactions = allTransactions.data.filter(
+      (tx) =>
+        tx.description.toLowerCase().includes(query.toLowerCase()) ||
+        tx.merchant?.toLowerCase().includes(query.toLowerCase()) ||
+        tx.id.toLowerCase().includes(query.toLowerCase())
+    );
+
+    return {
+      data: filteredTransactions,
+      success: true,
+    };
+  }
+
+  /**
+   * Submit a bug report
+   */
+  async reportBug(bugReport: string): Promise<ApiResponse<void>> {
+    // For now, simulate bug report submission - replace with real API call
+    console.log("Bug report submitted:", bugReport);
+
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({
+          data: undefined,
+          success: true,
+          message: "Bug report submitted successfully",
+        });
+      }, 500); // Simulate network delay
+    });
+  }
+}
+
+// Export singleton instance
+export const apiService = new ApiService();

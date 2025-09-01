@@ -1,0 +1,85 @@
+{
+  "expo": {
+    "name": "HandyPay",
+    "slug": "phonetap-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "scheme": "handypay",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.handypay.mobile",
+      "buildNumber": "1",
+      "entitlements": {
+        "com.apple.developer.applesignin": ["Default"]
+      },
+      "infoPlist": {
+        "CFBundleDisplayName": "HandyPay",
+        "NSFaceIDUsageDescription": "HandyPay uses Face ID for secure biometric authentication to protect your account and transactions.",
+        "NSBiometricUsageDescription": "HandyPay uses biometric authentication (Face ID or Touch ID) to secure your account and transactions.",
+        "NSCameraUsageDescription": "HandyPay needs camera access for QR code scanning to process payments.",
+        "NSPhotoLibraryUsageDescription": "HandyPay needs photo library access to save transaction receipts.",
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLName": "handypay-oauth",
+            "CFBundleURLSchemes": [
+              "handypay",
+              "exp",
+              "exps",
+              "handypay-oauth"
+            ]
+          }
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.handypay.mobile",
+      "versionCode": 1,
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "ddfd586e-002d-42b7-a1e8-37fd53b7c4cc"
+      }
+    },
+    "build": {
+      "development": {
+        "developmentClient": true,
+        "distribution": "internal",
+        "ios": {
+          "resourceClass": "m-medium"
+        },
+        "android": {
+          "resourceClass": "medium"
+        }
+      }
+    },
+    "owner": "kylekonstnar",
+    "plugins": [
+      "expo-web-browser",
+      "expo-apple-authentication",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "HandyPay uses Face ID for secure biometric authentication to protect your account and transactions."
+        }
+      ],
+      "expo-dev-client"
+    ],
+    "experiments": {
+      "tsconfigPaths": true
+    }
+  }
+}
