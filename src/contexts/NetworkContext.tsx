@@ -48,18 +48,21 @@ export const NetworkProvider: React.FC<NetworkProviderProps> = ({ children }) =>
         clearTimeout(timeoutId);
         const connected = response.ok;
 
-        console.log('🌐 Global Network Check:', { connected, timestamp: new Date().toLocaleTimeString() });
+        // Only log connection changes, not every check
+        if (connected !== isConnected) {
+          console.log('🌐 Network status changed:', { connected, timestamp: new Date().toLocaleTimeString() });
+        }
 
         setIsConnected(connected);
 
         // Show banner immediately when connection is lost
         if (!connected && !showNetworkBanner) {
-          console.log('📡 Instantly showing global network banner - connection lost');
+          console.log('📡 Showing network banner - connection lost');
           setShowNetworkBanner(true);
         }
         // Hide banner immediately when connection is restored
         else if (connected && showNetworkBanner) {
-          console.log('📡 Instantly hiding global network banner - connection restored');
+          console.log('📡 Hiding network banner - connection restored');
           setShowNetworkBanner(false);
         }
       } catch (error) {
@@ -79,8 +82,8 @@ export const NetworkProvider: React.FC<NetworkProviderProps> = ({ children }) =>
     // Check connectivity immediately on mount
     checkConnectivity();
 
-    // Check connectivity every 3 seconds for faster response (reduced from 5s)
-    intervalId = setInterval(checkConnectivity, 3000);
+    // Check connectivity every 10 seconds for reasonable responsiveness
+    intervalId = setInterval(checkConnectivity, 10000);
 
     // Cleanup interval on unmount
     return () => {

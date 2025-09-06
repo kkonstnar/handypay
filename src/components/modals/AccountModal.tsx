@@ -58,7 +58,17 @@ export default function AccountModal({
   onAvatarUpdate
 }: AccountModalProps): React.ReactElement {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
-  const { updateAvatarUri } = useUser();
+  const { updateAvatarUri, cachedAvatarUri, cacheAvatar } = useUser();
+
+  // Debug logging for avatar caching
+  if (__DEV__) {
+    console.log('🎭 AccountModal avatar state:', {
+      cachedAvatarUri: !!cachedAvatarUri,
+      userAvatar: !!userAvatar,
+      usingCached: !!cachedAvatarUri,
+      usingProp: !cachedAvatarUri && !!userAvatar
+    });
+  }
 
   const handleBiometricsToggle = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -187,7 +197,10 @@ export default function AccountModal({
         
         // Update avatar in user context
         await updateAvatarUri(imageUri);
-        
+
+        // Cache avatar globally for instant display across all screens
+        await cacheAvatar(imageUri);
+
         // Call the optional prop callback if provided
         onAvatarUpdate?.(imageUri);
         
@@ -203,6 +216,8 @@ export default function AccountModal({
   const removeAvatar = async () => {
     try {
       await updateAvatarUri('');
+      // Clear global cache
+      await cacheAvatar('');
       onAvatarUpdate?.('');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Success', 'Profile picture removed successfully!');
@@ -253,12 +268,20 @@ export default function AccountModal({
                 onPress={handleAvatarPress}
               >
                 <View style={styles.profileAvatar}>
-                  {userAvatar ? (
-                    <Image 
-                      source={{ uri: userAvatar }} 
-                      style={styles.avatarImage}
-                      resizeMode="cover"
-                    />
+                  {cachedAvatarUri || userAvatar ? (
+                    <View style={styles.avatarImageContainer}>
+                      <Image
+                        key={`account-avatar-${cachedAvatarUri || userAvatar}`}
+                        source={{ uri: cachedAvatarUri || userAvatar }}
+                        style={styles.avatarImage}
+                        resizeMode="cover"
+                        onError={(error) => {
+                          if (__DEV__) {
+                            console.error('🎭 AccountModal avatar load error:', error.nativeEvent.error);
+                          }
+                        }}
+                      />
+                    </View>
                   ) : (
                     <Text style={styles.profileInitials}>
                       {userInitials}
@@ -421,10 +444,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden'
   },
-  avatarImage: {
+  avatarImageContainer: {
     width: 64,
     height: 64,
-    borderRadius: 32
+    borderRadius: 32,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative'
+  },
+  avatarImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    // Position to show more of the image with less cropping
+    position: 'absolute',
+    top: -8,
+    left: -8,
+    // Ensure proper clipping for circular images
+    overflow: 'hidden'
   },
   avatarEditOverlay: {
     position: 'absolute',

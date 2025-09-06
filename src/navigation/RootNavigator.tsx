@@ -48,6 +48,9 @@ function AuthRouter(): React.ReactElement {
     hasAccount: boolean;
     isComplete: boolean;
   } | null>(null);
+  const [lastCheckedUserId, setLastCheckedUserId] = useState<string | null>(null);
+  const [lastCheckedTime, setLastCheckedTime] = useState<number | null>(null);
+  const [initialRoute, setInitialRoute] = useState<keyof RootStackParamList>("StartPage");
 
   // Check backend onboarding status when user is available
   useEffect(() => {
@@ -57,35 +60,77 @@ function AuthRouter(): React.ReactElement {
         return;
       }
 
+      // Check if we recently checked this user's status (within last 30 seconds)
+      const now = Date.now();
+      if (lastCheckedUserId === user.id && lastCheckedTime && (now - lastCheckedTime) < 30000) {
+        if (__DEV__) {
+          console.log('⏰ Using cached onboarding status for user:', user.id);
+        }
+        return;
+      }
+
       setCheckingOnboarding(true);
+
+      // Add shorter timeout for faster login experience
+      const timeoutId = setTimeout(() => {
+        // Only log timeout in development mode
+        if (__DEV__) {
+          console.log('⏰ Backend check timed out - falling back to local data');
+        }
+        setCheckingOnboarding(false);
+        setOnboardingStatus(null);
+        // Update initial route after timeout
+        updateInitialRoute(user, null);
+      }, 2000); // 2 second timeout for faster login
+
       try {
-        console.log('🔍 RootNavigator - Checking backend onboarding status for user:', {
-          userId: user.id,
-          hasStripeAccountId: !!user.stripeAccountId,
-          stripeAccountId: user.stripeAccountId
-        });
+        // Only log in development mode to reduce console spam
+        if (__DEV__) {
+          console.log('🔍 Checking backend onboarding status for user:', user.id);
+        }
+
         const response = await fetch(
-          `https://handypay-backend.onrender.com/api/stripe/user-account/${user.id}`
+          `https://handypay-backend.handypay.workers.dev/api/stripe/user-account/${user.id}`
         );
+
+        clearTimeout(timeoutId); // Clear timeout if request succeeds
 
         if (response.ok) {
           const backendData = await response.json();
-          setOnboardingStatus({
+          const status = {
             hasAccount: !!backendData.stripe_account_id,
             isComplete: !!backendData.stripe_onboarding_completed
-          });
-          console.log('✅ Backend onboarding status:', {
-            hasAccount: !!backendData.stripe_account_id,
-            isComplete: !!backendData.stripe_onboarding_completed,
-            backendData: backendData
-          });
+          };
+          setOnboardingStatus(status);
+
+          // Update cache
+          setLastCheckedUserId(user.id);
+          setLastCheckedTime(Date.now());
+
+          // Only log in development mode to reduce console spam
+          if (__DEV__) {
+            console.log('✅ Backend onboarding status:', status);
+          }
+
+          // Update initial route
+          updateInitialRoute(user, status);
         } else {
-          console.log('❌ Failed to check backend onboarding status');
+          // Only log failures in development mode
+          if (__DEV__) {
+            console.log('❌ Failed to check backend onboarding status - falling back to local data');
+          }
           setOnboardingStatus(null);
+          // Update initial route
+          updateInitialRoute(user, null);
         }
       } catch (error) {
-        console.error('❌ Error checking backend onboarding status:', error);
+        // Only log errors in development mode
+        if (__DEV__) {
+          console.error('❌ Error checking backend onboarding status - falling back to local data:', error);
+        }
         setOnboardingStatus(null);
+        // Update initial route
+        updateInitialRoute(user, null);
       } finally {
         setCheckingOnboarding(false);
       }
@@ -99,52 +144,68 @@ function AuthRouter(): React.ReactElement {
     }
   }, [user?.id]);
 
-  // Show loading spinner while checking authentication or onboarding status
-  // Also wait for onboarding status to be available if user exists
-  if (isLoading || checkingOnboarding || (user && !onboardingStatus)) {
+  // Update initial route when auth check completes
+  const updateInitialRoute = (user: any, onboardingStatus: any) => {
+    let routeName: keyof RootStackParamList = "StartPage";
+
+    if (user) {
+      // User is logged in, check if they've completed Stripe onboarding
+      // Use backend status if available, otherwise fall back to local user context
+      const onboardingCompleted = onboardingStatus?.isComplete ?? user.stripeOnboardingCompleted;
+      const hasStripeAccount = onboardingStatus?.hasAccount ?? !!user.stripeAccountId;
+
+      // Only log navigation decisions in development mode
+      if (__DEV__) {
+        console.log('🎯 Navigation decision:', {
+          userId: user.id,
+          hasStripeAccount,
+          onboardingCompleted
+        });
+      }
+
+      if (onboardingCompleted && hasStripeAccount) {
+        // User has completed onboarding, go to main app
+        if (__DEV__) {
+          console.log('🚀 User has completed onboarding - setting initial route to HomeTabs');
+        }
+        routeName = "HomeTabs";
+      } else if (hasStripeAccount) {
+        // User has Stripe account but onboarding not complete, go to GetStartedPage
+        if (__DEV__) {
+          console.log('🔄 User has Stripe account but onboarding incomplete - setting initial route to GetStartedPage');
+        }
+        routeName = "GetStartedPage";
+      } else {
+        // User has no Stripe account, start from biometrics
+        if (__DEV__) {
+          console.log('👤 User has no Stripe account - setting initial route to BiometricsPage');
+        }
+        routeName = "BiometricsPage";
+      }
+    }
+
+    setInitialRoute(routeName);
+  };
+
+  // Handle navigation for non-authenticated users
+  useEffect(() => {
+    if (!isLoading && !user && !checkingOnboarding) {
+      setInitialRoute("StartPage");
+    }
+  }, [isLoading, user, checkingOnboarding]);
+
+  // Wait for all backend checks to complete before showing any screen
+  if (isLoading || checkingOnboarding) {
     return (
       <View style={{
         flex: 1,
+        backgroundColor: '#ffffff',
         justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#ffffff'
+        alignItems: 'center'
       }}>
-        <ActivityIndicator size="large" color="#3AB75C" />
+        {/* Loading state while backend checks complete */}
       </View>
     );
-  }
-
-  // Determine initial route based on user authentication and onboarding status
-  let initialRoute: keyof RootStackParamList = "StartPage";
-
-  if (user) {
-    // User is logged in, check if they've completed Stripe onboarding
-    // Use backend status if available, otherwise fall back to local user context
-    const onboardingCompleted = onboardingStatus?.isComplete ?? user.stripeOnboardingCompleted;
-    const hasStripeAccount = onboardingStatus?.hasAccount ?? !!user.stripeAccountId;
-
-    console.log('🎯 RootNavigator navigation decision:', {
-      userId: user.id,
-      hasStripeAccount,
-      onboardingCompleted,
-      onboardingStatus,
-      userStripeAccountId: user.stripeAccountId,
-      userOnboardingCompleted: user.stripeOnboardingCompleted
-    });
-
-    if (onboardingCompleted && hasStripeAccount) {
-      // User has completed onboarding, go to main app
-      console.log('🚀 User has completed onboarding - navigating to HomeTabs');
-      initialRoute = "HomeTabs";
-    } else if (hasStripeAccount) {
-      // User has Stripe account but onboarding not complete, go to GetStartedPage
-      console.log('🔄 User has Stripe account but onboarding incomplete - navigating to GetStartedPage');
-      initialRoute = "GetStartedPage";
-    } else {
-      // User has no Stripe account, start from biometrics
-      console.log('👤 User has no Stripe account - navigating to BiometricsPage');
-      initialRoute = "BiometricsPage";
-    }
   }
 
   return (

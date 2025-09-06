@@ -10,7 +10,7 @@
         "resourceClass": "m-medium"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://handypay-backend.onrender.com",
+        "EXPO_PUBLIC_API_URL": "https://handypay-backend.handypay.workers.dev",
         "STRIPE_TEST_SECRET_KEY": "$STRIPE_TEST_SECRET_KEY",
         "NEXT_PUBLIC_STRIPE_TEST_PUBLISHABLE_KEY": "$NEXT_PUBLIC_STRIPE_TEST_PUBLISHABLE_KEY",
         "EXPO_PUBLIC_APPLE_CLIENT_ID": "com.handypay.mobile",
@@ -25,7 +25,7 @@
         "resourceClass": "m-medium"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://handypay-backend.onrender.com",
+        "EXPO_PUBLIC_API_URL": "https://handypay-backend.handypay.workers.dev",
         "STRIPE_TEST_SECRET_KEY": "$STRIPE_TEST_SECRET_KEY",
         "NEXT_PUBLIC_STRIPE_TEST_PUBLISHABLE_KEY": "$NEXT_PUBLIC_STRIPE_TEST_PUBLISHABLE_KEY",
         "EXPO_PUBLIC_APPLE_CLIENT_ID": "com.handypay.mobile",
@@ -39,7 +39,7 @@
         "resourceClass": "m-medium"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://handypay-backend.onrender.com",
+        "EXPO_PUBLIC_API_URL": "https://handypay-backend.handypay.workers.dev",
         "STRIPE_TEST_SECRET_KEY": "$STRIPE_TEST_SECRET_KEY",
         "NEXT_PUBLIC_STRIPE_TEST_PUBLISHABLE_KEY": "$NEXT_PUBLIC_STRIPE_TEST_PUBLISHABLE_KEY",
         "EXPO_PUBLIC_APPLE_CLIENT_ID": "com.handypay.mobile",

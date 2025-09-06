@@ -6,9 +6,16 @@ import { hashPin, verifyPin } from '../utils/pinUtils';
 // Sync user data to backend database for Stripe account creation
 const syncUserToBackend = async (userData: UserData): Promise<any> => {
   try {
-    console.log('🔄 Syncing user to backend database:', userData.id);
+    // Only log in development mode to reduce console spam
+    if (__DEV__) {
+      console.log('🔄 Syncing user to backend database:', userData.id);
+    }
 
-    const response = await fetch('https://handypay-backend.onrender.com/api/users/sync', {
+    // Add timeout to prevent hanging
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+    const response = await fetch('https://handypay-backend.handypay.workers.dev/api/users/sync', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -26,20 +33,32 @@ const syncUserToBackend = async (userData: UserData): Promise<any> => {
         faceIdEnabled: userData.faceIdEnabled,
         safetyPinEnabled: userData.safetyPinEnabled,
       }),
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      console.error('Backend sync failed:', response.status, response.statusText);
+      // Only log errors in development mode
+      if (__DEV__) {
+        console.error('Backend sync failed:', response.status, response.statusText);
+      }
       return false;
     }
 
     const result = await response.json();
-    console.log('✅ Backend sync successful:', result);
+    // Only log success in development mode
+    if (__DEV__) {
+      console.log('✅ Backend sync successful');
+    }
 
     // Return the full result so frontend can check for existingAccount
     return result;
   } catch (error) {
-    console.error('❌ Backend sync error:', error);
+    // Only log errors in development mode
+    if (__DEV__) {
+      console.error('❌ Backend sync error:', error instanceof Error ? error.message : 'Unknown error');
+    }
     return false;
   }
 };
@@ -72,6 +91,11 @@ interface UserContextType {
   verifySafetyPin: (pin: string) => Promise<boolean>;
   updateAvatarUri: (avatarUri: string) => Promise<void>;
   isLoading: boolean;
+  // Avatar caching methods
+  cachedAvatarUri: string | null;
+  cacheAvatar: (uri: string) => Promise<void>;
+  getCachedAvatar: () => string | null;
+  avatarLoading: boolean;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -81,6 +105,8 @@ const USER_STORAGE_KEY = '@handypay_user_data';
 export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUserState] = useState<UserData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [cachedAvatarUri, setCachedAvatarUri] = useState<string | null>(null);
+  const [avatarLoading, setAvatarLoading] = useState(false);
 
   // Load user data on app start
   useEffect(() => {
@@ -159,8 +185,10 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearUser = async () => {
     try {
       await AsyncStorage.removeItem(USER_STORAGE_KEY);
+      await AsyncStorage.removeItem('@handypay_cached_avatar'); // Clear cached avatar
       setUserState(null);
-      console.log('User data cleared');
+      setCachedAvatarUri(null); // Clear cached avatar state
+      console.log('User data and cached avatar cleared');
     } catch (error) {
       console.error('Error clearing user data:', error);
     }
@@ -268,6 +296,53 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Avatar caching methods
+  const cacheAvatar = async (uri: string) => {
+    try {
+      setAvatarLoading(true);
+      setCachedAvatarUri(uri);
+      // Cache in AsyncStorage for persistence across app restarts
+      await AsyncStorage.setItem('@handypay_cached_avatar', uri);
+      if (__DEV__) {
+        console.log('✅ Avatar cached globally:', uri);
+      }
+    } catch (error) {
+      console.error('❌ Failed to cache avatar:', error);
+    } finally {
+      setAvatarLoading(false);
+    }
+  };
+
+  const getCachedAvatar = () => {
+    return cachedAvatarUri;
+  };
+
+  // Load cached avatar on startup
+  useEffect(() => {
+    const loadCachedAvatar = async () => {
+      try {
+        const cachedUri = await AsyncStorage.getItem('@handypay_cached_avatar');
+        if (cachedUri) {
+          setCachedAvatarUri(cachedUri);
+          if (__DEV__) {
+            console.log('✅ Cached avatar loaded:', cachedUri);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Failed to load cached avatar:', error);
+      }
+    };
+
+    loadCachedAvatar();
+  }, []);
+
+  // Auto-cache avatar when user data changes
+  useEffect(() => {
+    if (user?.avatarUri && !cachedAvatarUri) {
+      cacheAvatar(user.avatarUri);
+    }
+  }, [user?.avatarUri]);
+
   const value: UserContextType = {
     user,
     setUser,
@@ -279,6 +354,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     verifySafetyPin,
     updateAvatarUri,
     isLoading,
+    // Avatar caching
+    cachedAvatarUri,
+    cacheAvatar,
+    getCachedAvatar,
+    avatarLoading,
   };
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

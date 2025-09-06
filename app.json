@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.handypay.mobile",
-      "buildNumber": "1",
+      "buildNumber": "5",
       "entitlements": {
         "com.apple.developer.applesignin": ["Default"]
       },

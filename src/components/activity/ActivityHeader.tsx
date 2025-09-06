@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Avatar from '../ui/Avatar';
+import { memo } from 'react';
 
 interface ActivityHeaderProps {
   onAvatarPress: () => void;
@@ -13,7 +14,7 @@ interface ActivityHeaderProps {
   userAvatarUri?: string;
 }
 
-export default function ActivityHeader({
+function ActivityHeader({
   onAvatarPress,
   showSearch,
   searchQuery,
@@ -65,6 +66,8 @@ export default function ActivityHeader({
     </>
   );
 }
+
+export default memo(ActivityHeader);
 
 const styles = StyleSheet.create({
   header: {

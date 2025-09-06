@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo, useCallback, useMemo } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Toast from 'react-native-toast-message';
@@ -36,7 +36,7 @@ interface TransactionSection {
 
 
 
-export default function ActivityScreen(): React.ReactElement {
+function ActivityScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [showSearch, setShowSearch] = useState(false);
@@ -78,6 +78,10 @@ export default function ActivityScreen(): React.ReactElement {
   const { transactions, cancelTransaction } = useTransactions();
   const { user, clearUser } = useUser();
   const userData = user; // Explicit typing to help TypeScript
+
+  // Memoize user data to prevent unnecessary re-renders
+  const userInitials = useMemo(() => getUserInitials(user), [user]);
+  const userAvatarUri = useMemo(() => userData?.avatarUri, [userData?.avatarUri]);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [showSafetyPinVerifyModal, setShowSafetyPinVerifyModal] = useState(false);
   const [transactionUpdateKey, setTransactionUpdateKey] = useState(0);
@@ -114,10 +118,10 @@ export default function ActivityScreen(): React.ReactElement {
     }
   }, []);
 
-  const handleAvatarPress = () => {
+  const handleAvatarPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setShowAccountModal(true);
-  };
+  }, []);
 
   const closeAccountModal = () => {
     setShowAccountModal(false);
@@ -131,7 +135,7 @@ export default function ActivityScreen(): React.ReactElement {
   const authenticateUser = async (action: () => void, message: string) => {
     if (userData?.faceIdEnabled) {
       // Use Face ID authentication
-      await BiometricAuthService.authenticateWithPrompt(
+      const authSuccess = await BiometricAuthService.authenticateWithPrompt(
         message,
         {
           showErrorAlert: true,
@@ -139,10 +143,17 @@ export default function ActivityScreen(): React.ReactElement {
           onSuccess: action
         }
       );
+
+      // If authentication failed or was cancelled, don't proceed with the action
+      if (!authSuccess) {
+        console.log('❌ Face ID authentication failed or cancelled, aborting action');
+        return;
+      }
     } else if (userData?.safetyPinEnabled) {
       // Use Safety PIN authentication
       setPendingAction(() => action);
       setShowSafetyPinVerifyModal(true);
+      // Don't return here - the PIN modal will handle the action when verified
     } else {
       // No authentication required, proceed directly
       action();
@@ -310,10 +321,10 @@ export default function ActivityScreen(): React.ReactElement {
         onAvatarPress={handleAvatarPress}
         showSearch={showSearch}
         searchQuery={searchQuery}
-        onSearchToggle={() => setShowSearch(!showSearch)}
-        onSearchChange={setSearchQuery}
-        userInitials={getUserInitials(user)}
-        userAvatarUri={userData?.avatarUri}
+        onSearchToggle={useCallback(() => setShowSearch(!showSearch), [showSearch])}
+        onSearchChange={useCallback(setSearchQuery, [])}
+        userInitials={userInitials}
+        userAvatarUri={userAvatarUri}
       />
 
       
@@ -447,6 +458,8 @@ export default function ActivityScreen(): React.ReactElement {
     </View>
   );
 }
+
+export default memo(ActivityScreen);
 
 const styles = StyleSheet.create({
   container: {

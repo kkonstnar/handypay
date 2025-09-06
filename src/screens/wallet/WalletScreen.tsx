@@ -156,7 +156,7 @@ export default function WalletScreen(): React.ReactElement {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Payouts</Text>
-        <Avatar onPress={handleAccountPress} imageUri={user?.avatarUri} />
+        <Avatar onPress={handleAccountPress} initials={getUserInitials(user)} imageUri={user?.avatarUri} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>

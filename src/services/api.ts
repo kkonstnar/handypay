@@ -1,7 +1,7 @@
 import { Transaction, Payout, Balance, ApiResponse } from "../types";
 
 // API Base URL - points to our backend
-const API_BASE_URL = "https://handypay-backend.onrender.com";
+const API_BASE_URL = "https://handypay-backend.handypay.workers.dev";
 
 /**
  * API Service for handling all backend API calls
@@ -22,7 +22,14 @@ export class ApiService {
   ): Promise<ApiResponse<T>> {
     try {
       const url = `${this.baseURL}${endpoint}`;
-      console.log(`🌐 API Request: ${options.method || "GET"} ${url}`);
+
+      // Only log in development mode and for important requests
+      if (
+        __DEV__ &&
+        (endpoint.includes("error") || endpoint.includes("balance"))
+      ) {
+        console.log(`🌐 API Request: ${options.method || "GET"} ${endpoint}`);
+      }
 
       const response = await fetch(url, {
         headers: {
@@ -35,7 +42,10 @@ export class ApiService {
       const data = await response.json();
 
       if (!response.ok) {
-        console.error(`❌ API Error ${response.status}:`, data);
+        console.error(
+          `❌ API Error ${response.status}:`,
+          data.error || data.message
+        );
         return {
           data: null as T,
           success: false,
@@ -44,14 +54,24 @@ export class ApiService {
         };
       }
 
-      console.log(`✅ API Success:`, data);
+      // Only log success for important operations
+      if (
+        __DEV__ &&
+        (endpoint.includes("balance") || endpoint.includes("onboarding"))
+      ) {
+        console.log(`✅ API Success:`, endpoint);
+      }
+
       return {
         data: data.data || data,
         success: true,
         message: data.message,
       };
     } catch (error) {
-      console.error(`❌ API Network Error:`, error);
+      console.error(
+        `❌ API Network Error:`,
+        error instanceof Error ? error.message : "Network error"
+      );
       return {
         data: null as T,
         success: false,

@@ -7,6 +7,7 @@ import HandyPayLogo from '../../../assets/handypay.svg';
 import QRCodeSvg from '../../../assets/qr-code-https---handyhurry-c-2025-08-20T12-23-41.svg';
 import GoogleLogo from '../../../assets/google.svg';
 import SystemBannerContainer from '../../components/ui/SystemBannerContainer';
+import EmailLoginModal from '../../components/modals/EmailLoginModal';
 
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/RootNavigator';
@@ -17,7 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Toast from 'react-native-toast-message';
 
 // Backend API URL
-const API_URL = "https://handypay-backend.onrender.com";
+const API_URL = "https://handypay-backend.handypay.workers.dev";
 
 // Helper function to load existing user data to preserve stripe information
 const loadExistingUserData = async (googleUserId: string) => {
@@ -75,6 +76,7 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
   const [hasNavigated, setHasNavigated] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
   const [showNetworkBanner, setShowNetworkBanner] = useState(false);
+  const [showEmailLogin, setShowEmailLogin] = useState(false);
 
   const { user, setUser, updateLastLogin } = useUser();
 
@@ -132,11 +134,11 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
       }
     };
 
-    // Check connectivity immediately
-    checkConnectivity();
+    // Delay initial connectivity check to prevent flash on mount
+    setTimeout(() => checkConnectivity(), 1000);
 
-    // Check connectivity every 10 seconds (less frequent than before)
-    intervalId = setInterval(checkConnectivity, 10000);
+    // Check connectivity every 30 seconds to prevent flashes (was 10 seconds)
+    intervalId = setInterval(checkConnectivity, 30000);
 
     // Cleanup interval on unmount
     return () => {
@@ -146,8 +148,9 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
     };
   }, [showNetworkBanner]);
 
-  // Only handle navigation for completely new users who just signed up
+  // COMMENTED OUT: Only handle navigation for completely new users who just signed up
   // Existing users are handled by RootNavigator based on their onboarding status
+  /*
   useEffect(() => {
     const handleNewUser = async () => {
       if (hasNavigated || !user?.id) return;
@@ -178,6 +181,7 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
 
     handleNewUser();
   }, [user, navigation, hasNavigated]);
+  */
 
 
 
@@ -186,7 +190,8 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
     const handleDeepLink = async (event: { url: string }) => {
       // Check if this is a Google OAuth callback
       if (event.url.includes('google') || event.url.includes('oauth') ||
-          event.url.includes('auth.expo.io') || event.url.includes('code=')) {
+          event.url.includes('auth.expo.io') || event.url.includes('code=') ||
+          event.url.includes('auth/callback')) {
         try {
           const url = new URL(event.url.split('#')[0]);
           const code = url.searchParams.get('code');
@@ -205,7 +210,7 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 code: code,
-                redirectUri: 'https://handypay-backend.onrender.com/auth/google/callback'
+                redirectUri: `${API_URL}/auth/callback/google`
               }),
             });
 
@@ -389,6 +394,12 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
     setProvider(null);
   };
 
+  const handleEmailLoginPress = () => {
+    console.log('📧 Opening email login modal');
+    setShowEmailLogin(true);
+  };
+
+
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       {showNetworkBanner && (
@@ -459,8 +470,24 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
               {loading ? 'Signing in...' : 'Continue with Google'}
             </Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={handleEmailLoginPress}
+            activeOpacity={0.7}
+            disabled={loading}
+          >
+            <Text style={[styles.emailLinkText, loading && styles.disabledText]}>
+              Continue with Email
+            </Text>
+          </TouchableOpacity>
+
         </View>
       </View>
+
+      <EmailLoginModal
+        visible={showEmailLogin}
+        onClose={() => setShowEmailLogin(false)}
+      />
     </View>
   );
 }
@@ -549,7 +576,19 @@ const styles = StyleSheet.create({
     color: '#111827',
     fontFamily: 'DMSans-Medium',
   },
+  emailLinkText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#007AFF',
+    fontFamily: 'DMSans-Medium',
+    textAlign: 'center',
+    textDecorationLine: 'underline',
+    paddingVertical: 8,
+  },
   disabledButton: {
     opacity: 0.6,
+  },
+  disabledText: {
+    opacity: 0.5,
   },
 });

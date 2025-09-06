@@ -3,8 +3,7 @@ import * as AuthSession from "expo-auth-session";
 import { Linking, Platform } from "react-native";
 
 // Backend API URL for token verification
-const API_URL =
-  process.env.EXPO_PUBLIC_API_URL || "https://handypay-backend.onrender.com";
+const API_URL = "https://handypay-backend.handypay.workers.dev";
 
 // Google OAuth configuration
 const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || "";
@@ -12,17 +11,22 @@ const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || "";
 // Use backend-based OAuth flow - redirect to our backend for OAuth initiation
 const GOOGLE_OAUTH_URL = `${API_URL}/auth/google`;
 
-console.log("🔗 API_URL configured as:", API_URL);
-console.log("🔗 Google OAuth URL:", GOOGLE_OAUTH_URL);
-console.log("🔗 Google Client ID configured:", !!GOOGLE_CLIENT_ID);
-console.log("🔗 Development mode (__DEV__):", __DEV__);
+// Only log in development mode to reduce console spam
+if (__DEV__) {
+  console.log("🔗 API_URL configured as:", API_URL);
+  console.log("🔗 Google OAuth URL:", GOOGLE_OAUTH_URL);
+  console.log("🔗 Google Client ID configured:", !!GOOGLE_CLIENT_ID);
+}
 
 // Use native Apple Authentication instead of OAuth web flow
 export const useAppleAuth = () => {
-  console.log("Apple Auth Setup (Native):", {
-    isAvailable: AppleAuthentication.isAvailableAsync,
-    isDevelopment: __DEV__,
-  });
+  // Only log in development mode to reduce console spam
+  if (__DEV__) {
+    console.log("Apple Auth Setup (Native):", {
+      isAvailable: AppleAuthentication.isAvailableAsync,
+      isDevelopment: __DEV__,
+    });
+  }
 
   const promptAsync = async () => {
     try {
@@ -92,11 +96,14 @@ export const useAppleAuth = () => {
 
 // Use Google OAuth with backend proxy
 export const useGoogleAuth = () => {
-  console.log("Google Auth Setup:", {
-    clientId: !!GOOGLE_CLIENT_ID,
-    oauthUrl: GOOGLE_OAUTH_URL,
-    isDevelopment: __DEV__,
-  });
+  // Only log in development mode to reduce console spam
+  if (__DEV__) {
+    console.log("Google Auth Setup:", {
+      clientId: !!GOOGLE_CLIENT_ID,
+      oauthUrl: GOOGLE_OAUTH_URL,
+      isDevelopment: __DEV__,
+    });
+  }
 
   const promptAsync = async () => {
     try {
@@ -108,16 +115,14 @@ export const useGoogleAuth = () => {
       // Construct the backend OAuth URL - Use production callback even in development
       const oauthUrl = new URL(GOOGLE_OAUTH_URL);
       oauthUrl.searchParams.set("state", state);
+      // Use the correct Better Auth callback URL
       oauthUrl.searchParams.set(
         "redirect_uri",
-        "https://handypay-backend.onrender.com/auth/google/callback"
+        `${API_URL}/auth/callback/google`
       );
 
       console.log("🔗 OAuth URL being constructed:", oauthUrl.toString());
-      console.log(
-        "🔗 Using production callback URL for testing:",
-        "https://handypay-backend.onrender.com/auth/google/callback"
-      );
+      console.log("🔗 Using callback URL:", `${API_URL}/auth/callback/google`);
 
       console.log("Redirecting to backend OAuth URL:", oauthUrl.toString());
 

@@ -13,9 +13,11 @@ export default function SplashScreen({ onFinish }: SplashScreenProps): React.Rea
 
   useEffect(() => {
     const screenHeight = Dimensions.get('window').height;
-    // Use a percentage-based approach that works across device sizes
-    // Move logo from center to approximately 15% from top (accounting for safe areas)
-    const targetPosition = -(screenHeight * 0.35);
+    // Use a more reliable calculation that doesn't depend on SafeAreaProvider
+    // Approximate safe area top inset (44 for iOS, 24 for Android)
+    const estimatedSafeAreaTop = 44; // Conservative estimate for most devices
+    const headerPosition = estimatedSafeAreaTop + 64; // Position that matches StartPage header
+    const targetPosition = -(screenHeight / 2 - headerPosition);
     
     // Phase 1: Fade in and scale up (0-1s)
     Animated.parallel([
@@ -30,7 +32,7 @@ export default function SplashScreen({ onFinish }: SplashScreenProps): React.Rea
         useNativeDriver: true,
       }),
     ]).start(() => {
-      // Phase 2: After fade in, move logo up to StartPage position (8% from top)
+      // Phase 2: After fade in, move logo up to exact StartPage header position
       Animated.timing(translateYAnim, {
         toValue: targetPosition,
         duration: 500,

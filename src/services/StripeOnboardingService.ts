@@ -1,4 +1,4 @@
-import { User } from "../contexts/UserContext";
+import { UserData } from "../contexts/UserContext";
 
 export interface StripeOnboardingState {
   isPreloading: boolean;
@@ -42,7 +42,7 @@ class StripeOnboardingManager {
     return { ...this.state };
   }
 
-  async startPreloading(user: User): Promise<void> {
+  async startPreloading(user: UserData): Promise<void> {
     if (this.state.isPreloading || this.state.preloadedUrl) {
       console.log("Stripe onboarding already preloading or preloaded");
       return;
@@ -55,7 +55,7 @@ class StripeOnboardingManager {
       console.log("🚀 Starting Stripe onboarding preload for user:", user.id);
 
       const response = await fetch(
-        "https://handypay-backend.onrender.com/api/stripe/create-account-link",
+        "https://handypay-backend.handypay.workers.dev/api/stripe/create-account-link",
         {
           method: "POST",
           headers: {
@@ -72,8 +72,10 @@ class StripeOnboardingManager {
                 ? user.fullName.split(" ").slice(1).join(" ")
                 : "Unknown"),
             email: user.email || "user@handypay.com",
-            refresh_url: "https://handypay-backend.onrender.com/stripe/refresh",
-            return_url: "https://handypay-backend.onrender.com/stripe/return",
+            refresh_url:
+              "https://handypay-backend.handypay.workers.dev/stripe/refresh",
+            return_url:
+              "https://handypay-backend.handypay.workers.dev/stripe/return",
           }),
         }
       );
@@ -132,7 +134,7 @@ class StripeOnboardingManager {
       console.log(`🔍 Fetching Stripe account data for: ${stripeAccountId}`);
 
       const response = await fetch(
-        `https://handypay-backend.onrender.com/api/stripe/account-status`,
+        `https://handypay-backend.handypay.workers.dev/api/stripe/account-status`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -176,7 +178,7 @@ class StripeOnboardingManager {
 
       // Use the existing backend endpoint to get user account data
       const response = await fetch(
-        `https://handypay-backend.onrender.com/api/stripe/user-account/${userId}`
+        `https://handypay-backend.handypay.workers.dev/api/stripe/user-account/${userId}`
       );
 
       if (!response.ok) {
@@ -200,7 +202,7 @@ class StripeOnboardingManager {
 
   // Create or update Stripe Connect account using the new API pattern
   async createStripeAccount(
-    user: User
+    user: UserData
   ): Promise<{ url: string; accountId: string } | null> {
     try {
       console.log(`🚀 Creating Stripe account for user: ${user.id}`);
@@ -216,12 +218,14 @@ class StripeOnboardingManager {
             ? user.fullName.split(" ").slice(1).join(" ")
             : "Unknown"),
         email: user.email || "user@handypay.com",
-        refresh_url: "https://handypay-backend.onrender.com/stripe/refresh",
-        return_url: "https://handypay-backend.onrender.com/stripe/return",
+        refresh_url:
+          "https://handypay-backend.handypay.workers.dev/stripe/refresh",
+        return_url:
+          "https://handypay-backend.handypay.workers.dev/stripe/return",
       };
 
       const response = await fetch(
-        "https://handypay-backend.onrender.com/api/stripe/create-account-link",
+        "https://handypay-backend.handypay.workers.dev/api/stripe/create-account-link",
         {
           method: "POST",
           headers: {

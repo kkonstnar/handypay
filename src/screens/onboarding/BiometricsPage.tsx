@@ -150,29 +150,41 @@ export default function BiometricsPage({ navigation }: BiometricsPageProps): Rea
   };
 
   const handleUsePasscode = async () => {
-    console.log('🔢 User chose to use device passcode - checking device capabilities first');
+    console.log('🔢 User chose to use device passcode');
 
-    // First check if device has biometrics enrolled
+    // Check device capabilities and proceed with passcode authentication
     try {
-      const biometricInfo = await LocalAuthentication.getEnrolledLevelAsync();
-      console.log('🔍 Biometric enrollment level:', biometricInfo);
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      console.log('🔍 Device has biometric hardware:', hasHardware);
 
-      // If biometrics are enrolled, we need to be more explicit
-      if (biometricInfo > 0) {
+      if (!hasHardware) {
+        // No biometric hardware, passcode should work
+        await performPasscodeAuth();
+        return;
+      }
+
+      // Device has biometric hardware, but user might want passcode
+      // iOS will typically show passcode as fallback option
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      console.log('🔍 Biometrics enrolled:', isEnrolled);
+
+      if (isEnrolled) {
+        // Biometrics are enrolled, inform user that passcode will be available as fallback
         Alert.alert(
-          'Biometrics Detected',
-          'Your device has biometric authentication enrolled. To use device passcode only, please either:\n\n• Temporarily disable Face ID/Touch ID in Settings\n• Or use the Face ID option above\n\nWould you like to continue with passcode authentication?',
+          'Passcode Authentication',
+          'When prompted for authentication, you can use your device passcode if Face ID/Touch ID is not available or fails.',
           [
-            { text: 'Use Face ID Instead', onPress: () => handleEnableBiometrics() },
-            { text: 'Continue with Passcode', style: 'default', onPress: () => performPasscodeAuth() }
+            { text: 'Continue', onPress: () => performPasscodeAuth() },
+            { text: 'Use Face ID Instead', onPress: () => handleEnableBiometrics() }
           ]
         );
       } else {
-        // No biometrics enrolled, proceed with passcode
+        // No biometrics enrolled, passcode should be the primary method
         await performPasscodeAuth();
       }
+
     } catch (error) {
-      console.log('❌ Error checking biometric enrollment, proceeding with passcode auth');
+      console.log('❌ Error checking device capabilities, proceeding with passcode auth');
       await performPasscodeAuth();
     }
   };
@@ -181,15 +193,28 @@ export default function BiometricsPage({ navigation }: BiometricsPageProps): Rea
     console.log('🔐 Performing passcode-only authentication');
 
     try {
-      // On iOS, we need to use a different approach to force passcode
-      const result = await LocalAuthentication.authenticateAsync({
+      // First try with biometrics disabled to force passcode
+      let result = await LocalAuthentication.authenticateAsync({
         promptMessage: 'Enter your device passcode to continue',
         cancelLabel: 'Cancel',
-        // Try different combinations to force passcode
-        disableDeviceFallback: true,
+        disableDeviceFallback: false, // Allow passcode fallback
       });
 
       console.log('🔐 Passcode authentication result:', result);
+
+      // If that fails and user has biometrics enrolled, try a different approach
+      if (!result.success && isEnrolled) {
+        console.log('🔄 First attempt failed, trying alternative passcode approach...');
+
+        // Try again with a different prompt that might force passcode
+        result = await LocalAuthentication.authenticateAsync({
+          promptMessage: 'Please enter your device passcode',
+          cancelLabel: 'Cancel',
+          disableDeviceFallback: false,
+        });
+
+        console.log('🔐 Alternative passcode authentication result:', result);
+      }
 
       if (result.success) {
         console.log('✅ Passcode authentication successful');
@@ -198,7 +223,9 @@ export default function BiometricsPage({ navigation }: BiometricsPageProps): Rea
         console.log('❌ Passcode authentication failed:', result.error);
         Alert.alert(
           'Authentication Failed',
-          'Device passcode authentication failed. Please try again.',
+          result.error === 'user_cancel'
+            ? 'Authentication was cancelled. Please try again.'
+            : 'Device passcode authentication failed. Please try again.',
           [
             { text: 'Cancel', style: 'cancel' },
             {
@@ -210,14 +237,29 @@ export default function BiometricsPage({ navigation }: BiometricsPageProps): Rea
       }
     } catch (error) {
       console.error('❌ Passcode authentication error:', error);
-      Alert.alert(
-        'Error',
-        'Unable to authenticate with device passcode. This might be due to device settings.',
-        [
-          { text: 'Use Face ID Instead', onPress: () => handleEnableBiometrics() },
-          { text: 'Cancel', style: 'cancel' }
-        ]
-      );
+
+      // If it's a device not supported error, suggest using biometrics instead
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('not supported') || errorMessage.includes('not available')) {
+        Alert.alert(
+          'Passcode Not Available',
+          'Device passcode authentication is not available. Please use Face ID/Touch ID instead.',
+          [
+            { text: 'Use Face ID', onPress: () => handleEnableBiometrics() },
+            { text: 'Cancel', style: 'cancel' }
+          ]
+        );
+      } else {
+        Alert.alert(
+          'Authentication Error',
+          `Unable to authenticate: ${errorMessage}`,
+          [
+            { text: 'Try Again', onPress: () => performPasscodeAuth() },
+            { text: 'Use Face ID Instead', onPress: () => handleEnableBiometrics() },
+            { text: 'Cancel', style: 'cancel' }
+          ]
+        );
+      }
     }
   };
 
@@ -311,7 +353,7 @@ export default function BiometricsPage({ navigation }: BiometricsPageProps): Rea
           onPress={handleUsePasscode}
           disabled={isAuthenticating}
         >
-          Use passcode
+          {isBiometricSupported ? 'Use passcode instead' : 'Continue with passcode'}
         </Button>
       </View>
     </View>

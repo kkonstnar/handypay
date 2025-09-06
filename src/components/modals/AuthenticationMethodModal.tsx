@@ -324,7 +324,7 @@ export default function AuthenticationMethodModal({
 
       if (biometricInfo.isAvailable && biometricInfo.isEnrolled) {
         // Face ID is enabled and available, use it
-        await BiometricAuthService.authenticateWithPrompt(
+        const authSuccess = await BiometricAuthService.authenticateWithPrompt(
           'Authenticate to log out',
           {
             showErrorAlert: true,
@@ -332,6 +332,12 @@ export default function AuthenticationMethodModal({
             onSuccess: performLogout
           }
         );
+
+        // If authentication failed or was cancelled, don't proceed
+        if (!authSuccess) {
+          console.log('❌ Face ID authentication failed or cancelled during logout');
+          return;
+        }
       } else {
         // Face ID is enabled in user data but not available on device
         // Fall through to safety PIN or direct action
@@ -378,7 +384,7 @@ export default function AuthenticationMethodModal({
         console.log(`🗑️ Deleting account for user: ${user.id}`);
 
         const response = await fetch(
-          `https://handypay-backend.onrender.com/api/users/${user.id}`,
+          `https://handypay-backend.handypay.workers.dev/api/users/${user.id}`,
           {
             method: 'DELETE',
             headers: {
@@ -454,7 +460,7 @@ export default function AuthenticationMethodModal({
     // Execute authentication based on determined method
     if (authMethod === 'faceid') {
       console.log('🔐 Using Face ID for account deletion');
-      await BiometricAuthService.authenticateWithPrompt(
+      const authSuccess = await BiometricAuthService.authenticateWithPrompt(
         'Authenticate to delete account',
         {
           showErrorAlert: true,
@@ -465,6 +471,12 @@ export default function AuthenticationMethodModal({
           }
         }
       );
+
+      // If authentication failed or was cancelled, don't proceed
+      if (!authSuccess) {
+        console.log('❌ Face ID authentication failed or cancelled during account deletion');
+        return;
+      }
       // Don't continue - Face ID authentication handles everything
       return;
     } else if (authMethod === 'pin') {

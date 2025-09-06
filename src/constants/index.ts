@@ -1,6 +1,6 @@
 // API Configuration
 export const API_CONFIG = {
-  BASE_URL: "https://handypay-backend.onrender.com",
+  BASE_URL: "https://handypay-backend.handypay.workers.dev",
   TIMEOUT: 10000, // 10 seconds
 } as const;
 

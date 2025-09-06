@@ -74,7 +74,7 @@ export default function ScanToPayScreen({ navigation, route }: ScanToPayScreenPr
 
         // Check backend for real onboarding status
         const response = await fetch(
-          `https://handypay-backend.onrender.com/api/stripe/user-account/${user.id}`
+          `https://handypay-backend.handypay.workers.dev/api/stripe/user-account/${user.id}`
         );
 
         if (response.ok) {
@@ -246,7 +246,7 @@ export default function ScanToPayScreen({ navigation, route }: ScanToPayScreenPr
 
       // Check payment link status via backend
       const response = await fetch(
-        `https://handypay-backend.onrender.com/api/stripe/payment-link-status/${paymentLinkId}`,
+        `https://handypay-backend.handypay.workers.dev/api/stripe/payment-link-status/${paymentLinkId}`,
         {
           method: 'GET',
           headers: {

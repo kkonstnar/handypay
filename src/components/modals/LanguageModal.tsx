@@ -78,7 +78,14 @@ export default function LanguageModal({ visible, onClose }: LanguageModalProps):
           {Platform.OS === 'ios' ? (
             <Picker
               selectedValue={selectedLanguage}
-              onValueChange={(itemValue) => setSelectedLanguage(itemValue)}
+              onValueChange={(itemValue) => {
+                // Force selection back to English if user tries to select anything else
+                if (itemValue !== 'en') {
+                  setSelectedLanguage('en');
+                } else {
+                  setSelectedLanguage(itemValue);
+                }
+              }}
               style={styles.pickerIOS}
               itemStyle={styles.pickerItemIOS}
             >
@@ -94,7 +101,14 @@ export default function LanguageModal({ visible, onClose }: LanguageModalProps):
             <View style={styles.pickerContainer}>
               <Picker
                 selectedValue={selectedLanguage}
-                onValueChange={(itemValue) => setSelectedLanguage(itemValue)}
+                onValueChange={(itemValue) => {
+                  // Force selection back to English if user tries to select anything else
+                  if (itemValue !== 'en') {
+                    setSelectedLanguage('en');
+                  } else {
+                    setSelectedLanguage(itemValue);
+                  }
+                }}
                 style={styles.picker}
               >
                 {languages.map((language) => (

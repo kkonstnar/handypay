@@ -19,6 +19,7 @@ import HomeSvg from '../../../assets/home.svg';
 import ApplePaySvg from '../../../assets/apple-pay.svg';
 import Avatar from '../../components/ui/Avatar';
 import NumberPad from '../../components/ui/NumberPad';
+import FeeToggle from '../../components/ui/FeeToggle';
 import PaymentModal from '../../components/modals/PaymentModal';
 import PaymentLinkModal from '../../components/modals/PaymentLinkModal';
 import AccountModal from '../../components/modals/AccountModal';
@@ -71,8 +72,9 @@ export default function HomeScreen(): React.ReactElement {
   const [pressedKey, setPressedKey] = useState<string | null>(null);
   const [swipeButtonKey, setSwipeButtonKey] = useState<number>(0);
   const [showAccountModal, setShowAccountModal] = useState(false);
+  const [sendWithoutFees, setSendWithoutFees] = useState<boolean>(false);
 
-  const { user, updateSafetyPin, clearUser, updateFaceIdEnabled } = useUser();
+  const { user, updateSafetyPin, clearUser, updateFaceIdEnabled, cacheAvatar, cachedAvatarUri } = useUser();
 
   const [showReportBugModal, setShowReportBugModal] = useState(false);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
@@ -107,6 +109,16 @@ export default function HomeScreen(): React.ReactElement {
     }
   }, [user?.id]);
 
+  // Cache avatar globally when user data is available
+  useEffect(() => {
+    if (user?.avatarUri && !cachedAvatarUri) {
+      if (__DEV__) {
+        console.log('🏠 HomeScreen: Caching avatar for global use:', user.avatarUri);
+      }
+      cacheAvatar(user.avatarUri);
+    }
+  }, [user?.avatarUri, cachedAvatarUri, cacheAvatar]);
+
   // Function to check onboarding status from backend
   const checkOnboardingStatus = async () => {
     if (!user?.id) return;
@@ -118,21 +130,28 @@ export default function HomeScreen(): React.ReactElement {
       return;
     }
 
-    setOnboardingStatus(prev => ({ ...prev, isChecking: true }));
+    // Remove loading state - check silently in background
+    // setOnboardingStatus(prev => ({ ...prev, isChecking: true }));
 
     try {
-      console.log('🔐 Checking backend onboarding status on mount...');
+      // Only log in development mode to reduce console spam
+      if (__DEV__) {
+        console.log('🔐 Checking backend onboarding status on mount...');
+      }
       const response = await fetch(
-        `https://handypay-backend.onrender.com/api/stripe/user-account/${user.id}`
+        `https://handypay-backend.handypay.workers.dev/api/stripe/user-account/${user.id}`
       );
 
       if (response.ok) {
         const backendData = await response.json();
-        console.log('📊 Cached backend onboarding status:', {
-          hasAccount: !!backendData.stripe_account_id,
-          onboardingCompleted: backendData.stripe_onboarding_completed,
-          lastChecked: new Date(now).toLocaleTimeString()
-        });
+        // Only log in development mode to reduce console spam
+        if (__DEV__) {
+          console.log('📊 Cached backend onboarding status:', {
+            hasAccount: !!backendData.stripe_account_id,
+            onboardingCompleted: backendData.stripe_onboarding_completed,
+            lastChecked: new Date(now).toLocaleTimeString()
+          });
+        }
 
         setOnboardingStatus({
           isChecking: false,
@@ -142,11 +161,11 @@ export default function HomeScreen(): React.ReactElement {
         });
       } else {
         console.error('❌ Failed to check cached onboarding status:', response.status);
-        setOnboardingStatus(prev => ({ ...prev, isChecking: false }));
+        // setOnboardingStatus(prev => ({ ...prev, isChecking: false }));
       }
     } catch (error) {
       console.error('❌ Error checking cached onboarding status:', error);
-      setOnboardingStatus(prev => ({ ...prev, isChecking: false }));
+      // setOnboardingStatus(prev => ({ ...prev, isChecking: false }));
     }
   };
 
@@ -160,6 +179,7 @@ export default function HomeScreen(): React.ReactElement {
       setIsEntering(false);
       setDecimalPart('00');
       setIsDecimalMode(false);
+      setSendWithoutFees(false);
 
       // Refresh onboarding status when returning to screen (in case user just completed onboarding)
       if (user?.id) {
@@ -209,18 +229,25 @@ export default function HomeScreen(): React.ReactElement {
   };
 
   const handleConfirm = async () => {
-    console.log('🚀 handleConfirm called!');
+    // Only log in development mode to reduce console spam
+    if (__DEV__) {
+      console.log('🚀 handleConfirm called!');
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    // Use cached onboarding status for instant feedback
-    console.log('⚡ Using cached onboarding status:', {
-      isComplete: onboardingStatus.isComplete,
-      hasAccount: onboardingStatus.hasAccount,
-      lastChecked: onboardingStatus.lastChecked ? new Date(onboardingStatus.lastChecked).toLocaleTimeString() : 'Never'
-    });
+    // Only log cached status in development mode
+    if (__DEV__) {
+      console.log('⚡ Using cached onboarding status:', {
+        isComplete: onboardingStatus.isComplete,
+        hasAccount: onboardingStatus.hasAccount
+      });
+    }
 
     if (!user?.id) {
-      console.log('❌ No user ID available');
+      // Only log errors in development mode
+      if (__DEV__) {
+        console.log('❌ No user ID available');
+      }
       Alert.alert('Error', 'Please sign in again');
       // Reset swipe button after alert
       setTimeout(() => {
@@ -231,7 +258,10 @@ export default function HomeScreen(): React.ReactElement {
 
     // Check cached onboarding status first
     if (!onboardingStatus.hasAccount) {
-      console.log('❌ No Stripe account found (cached)');
+      // Only log in development mode
+      if (__DEV__) {
+        console.log('❌ No Stripe account found (cached)');
+      }
       Alert.alert(
         'Complete Setup First',
         'You need to finish your Stripe onboarding before you can start accepting payments. Would you like to continue setup now?',
@@ -262,12 +292,18 @@ export default function HomeScreen(): React.ReactElement {
     }
 
     if (!onboardingStatus.isComplete) {
-      console.log('❌ Onboarding not completed (cached)');
+      // Only log in development mode
+      if (__DEV__) {
+        console.log('❌ Onboarding not completed (cached)');
+      }
 
       // If status is stale (older than 5 minutes), refresh it
       const now = Date.now();
       if (!onboardingStatus.lastChecked || (now - onboardingStatus.lastChecked) > 300000) {
-        console.log('🔄 Cached status is stale, refreshing...');
+        // Only log in development mode
+        if (__DEV__) {
+          console.log('🔄 Cached status is stale, refreshing...');
+        }
         await checkOnboardingStatus();
 
         // Re-check after refresh
@@ -332,7 +368,10 @@ export default function HomeScreen(): React.ReactElement {
     }
 
     // Onboarding is complete according to cache
-    console.log('✅ Onboarding verified (cached), proceeding with payment');
+    // Only log success in development mode
+    if (__DEV__) {
+      console.log('✅ Onboarding verified (cached), proceeding with payment');
+    }
 
     // Check if user needs to set up authentication before proceeding
     if (!user?.faceIdEnabled && !user?.safetyPinEnabled) {
@@ -626,7 +665,7 @@ export default function HomeScreen(): React.ReactElement {
         console.log(`🗑️ Deleting account for user: ${user.id}`);
 
         const response = await fetch(
-          `https://handypay-backend.onrender.com/api/users/${user.id}`,
+          `https://handypay-backend.handypay.workers.dev/api/users/${user.id}`,
           {
             method: 'DELETE',
             headers: {
@@ -706,7 +745,7 @@ export default function HomeScreen(): React.ReactElement {
 
         if (biometricInfo.isAvailable && biometricInfo.isEnrolled) {
           // Face ID is enabled and available, use it
-          await BiometricAuthService.authenticateWithPrompt(
+          const authSuccess = await BiometricAuthService.authenticateWithPrompt(
             message,
             {
               showErrorAlert: true,
@@ -728,10 +767,14 @@ export default function HomeScreen(): React.ReactElement {
               }
             }
           );
-        } else {
-          // Face ID is enabled in user data but not available on device
-          // Fall through to safety PIN or direct action
-          console.log('⚠️ Face ID enabled but not available on device, falling back to safety PIN');
+
+          // If authentication failed or was cancelled, don't proceed with the action
+          if (!authSuccess) {
+            return;
+          }
+
+          // If Face ID authentication succeeded, we're done - return early
+          return;
         }
       }
 
@@ -741,8 +784,7 @@ export default function HomeScreen(): React.ReactElement {
       if (!user?.faceIdEnabled && deviceBiometricInfo.isAvailable) {
         // Face ID is disabled but device has biometric/passcode capability
         // Allow device passcode authentication
-        console.log('🔢 Using device passcode authentication (Face ID disabled)');
-        await BiometricAuthService.authenticateWithPrompt(
+        const authSuccess = await BiometricAuthService.authenticateWithPrompt(
           message,
           {
             showErrorAlert: true,
@@ -759,11 +801,20 @@ export default function HomeScreen(): React.ReactElement {
             }
           }
         );
+
+        // If authentication failed or was cancelled, don't proceed with the action
+        if (!authSuccess) {
+          return;
+        }
+
+        // If device passcode authentication succeeded, we're done - return early
+        return;
       } else if (user?.safetyPinEnabled) {
         // Use Safety PIN authentication as fallback
         console.log('🔐 Falling back to Safety PIN authentication');
         setPendingAction(() => action);
         setShowSafetyPinVerifyModal(true);
+        // Don't return here - the PIN modal will handle the action when verified
       } else if (!user?.faceIdEnabled && !user?.safetyPinEnabled) {
         // No authentication methods enabled, proceed directly
         console.log('⚠️ No authentication methods enabled, proceeding directly');
@@ -861,15 +912,6 @@ export default function HomeScreen(): React.ReactElement {
 
   return (
     <GestureHandlerRootView style={[styles.container, { paddingTop: insets.top + 16 }]}>
-      {/* Loading overlay for initial onboarding check */}
-      {onboardingStatus.isChecking && (
-        <View style={styles.loadingOverlay}>
-          <View style={styles.loadingContent}>
-            <ActivityIndicator size="large" color="#3AB75C" />
-            <Text style={styles.loadingText}>Checking account status...</Text>
-          </View>
-        </View>
-      )}
 
       {/* Header */}
       <View style={[styles.headerRow, { paddingHorizontal: 24 }]}>
@@ -886,12 +928,8 @@ export default function HomeScreen(): React.ReactElement {
         </TouchableOpacity>
       </View>
 
-      {/* Amount Section */}
-      <View style={styles.amountSection}>
-        <View style={styles.amountContainer}>
-          <Text style={styles.dollarSign}>$</Text>
-          <Text style={styles.amount}>{formatDisplayAmount(displayAmount, decimalPart, isEntering, isDecimalMode)}</Text>
-        </View>
+      {/* Currency Selector */}
+      <View style={styles.currencySection}>
         <TouchableOpacity 
           style={styles.currencySelector}
           onPress={() => {
@@ -928,6 +966,14 @@ export default function HomeScreen(): React.ReactElement {
         </TouchableOpacity>
       </View>
 
+      {/* Amount Section */}
+      <View style={styles.amountSection}>
+        <View style={styles.amountContainer}>
+          <Text style={styles.dollarSign}>$</Text>
+          <Text style={styles.amount}>{formatDisplayAmount(displayAmount, decimalPart, isEntering, isDecimalMode)}</Text>
+        </View>
+      </View>
+
       {/* Keypad */}
       <View style={styles.keypadContainer}>
         {keypad.map((row, rIdx) => (
@@ -961,6 +1007,18 @@ export default function HomeScreen(): React.ReactElement {
 
       {/* Swipe Button - positioned above tab bar */}
       <View style={[styles.bottomSection, { paddingHorizontal: 24, paddingBottom: 20 }]}>
+        {/* Fee Toggle - above swipe to confirm */}
+        {isEntering && amount > 0 && (
+          <View style={styles.feeToggleContainer}>
+            <FeeToggle
+              amount={amount}
+              currency={currency}
+              sendWithoutFees={sendWithoutFees}
+              onToggle={setSendWithoutFees}
+            />
+          </View>
+        )}
+        
         <SwipeButton
           key={swipeButtonKey}
           title="Swipe to confirm"
@@ -1126,6 +1184,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between'
   },
+  currencySection: {
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+  },
   amountSection: {
     alignItems: 'center',
     paddingVertical: 32,
@@ -1173,7 +1236,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: 'rgba(107, 114, 128, 0.1)',
-    marginTop: 12
   },
   currencyText: { 
     fontSize: 16, 
@@ -1181,11 +1243,18 @@ const styles = StyleSheet.create({
     color: '#374151',
     letterSpacing: 0.3
   },
+  feeToggleContainer: {
+    paddingHorizontal: 0,
+    paddingBottom: 16,
+    overflow: 'visible',
+    zIndex: 10,
+  },
   keypadContainer: {
-    flex: 1,
-    justifyContent: 'center',
+    position: 'absolute',
+    bottom: 180,
+    left: 0,
+    right: 0,
     paddingHorizontal: 24,
-    paddingTop: 16
   },
   row: { 
     flexDirection: 'row', 
@@ -1335,28 +1404,6 @@ const styles = StyleSheet.create({
   },
   paymentLinkUrlContainer: {
     marginBottom: 20
-  },
-  // Loading overlay styles
-  loadingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1000
-  },
-  loadingContent: {
-    alignItems: 'center',
-    padding: 20
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#6B7280',
-    fontFamily: 'DMSans-Medium'
   },
   paymentLinkUrl: {
     fontSize: 14,

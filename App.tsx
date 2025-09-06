@@ -7,7 +7,7 @@ import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { TransactionProvider } from './src/contexts/TransactionContext';
-import { UserProvider } from './src/contexts/UserContext';
+import { UserProvider, useUser } from './src/contexts/UserContext';
 import { NetworkProvider } from './src/contexts/NetworkContext';
 import * as SplashScreen from 'expo-splash-screen';
 import CustomSplashScreen from './src/components/SplashScreen';
@@ -16,6 +16,46 @@ import toastConfig from './src/components/ui/ToastConfig';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
+
+// Wrapper component to access UserContext
+function AppContent(): React.ReactElement {
+  const { isLoading: userLoading } = useUser();
+  const [showSplash, setShowSplash] = useState(true);
+
+  const onLayoutRootView = useCallback(async () => {
+    // Don't hide Expo splash screen here - let the custom splash handle it
+  }, []);
+
+  const handleSplashFinish = useCallback(() => {
+    // Always finish splash animation immediately, but only transition when user data is ready
+    setShowSplash(false);
+  }, []);
+
+  // Wait for both fonts and user data to be ready before finishing splash
+  useEffect(() => {
+    if (!userLoading && !showSplash) {
+      // Both user data and splash animation are ready
+      SplashScreen.hideAsync();
+    }
+  }, [userLoading, showSplash]);
+
+  if (showSplash) {
+    return <CustomSplashScreen onFinish={handleSplashFinish} />;
+  }
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }} onLayout={onLayoutRootView}>
+      <NetworkProvider>
+        <TransactionProvider>
+          <NavigationContainer>
+            <RootNavigator />
+          </NavigationContainer>
+        </TransactionProvider>
+      </NetworkProvider>
+      <Toast config={toastConfig} />
+    </GestureHandlerRootView>
+  );
+}
 
 export default function App(): React.ReactElement | null {
   const [fontsLoaded] = useFonts({
@@ -28,46 +68,15 @@ export default function App(): React.ReactElement | null {
     'DMSans-SemiBold': require('./assets/fonts/DMSans-SemiBold.ttf'),
   });
 
-  const [showSplash, setShowSplash] = useState(true);
-
-  const onLayoutRootView = useCallback(async () => {
-    if (fontsLoaded) {
-      await SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded]);
-
-  useEffect(() => {
-    if (fontsLoaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded]);
-
-  const handleSplashFinish = useCallback(() => {
-    setShowSplash(false);
-  }, []);
-
   if (!fontsLoaded) {
     return null;
   }
 
-  if (showSplash) {
-    return <CustomSplashScreen onFinish={handleSplashFinish} />;
-  }
-
   return (
     <SafeAreaProvider>
-      <GestureHandlerRootView style={{ flex: 1 }} onLayout={onLayoutRootView}>
-        <NetworkProvider>
-          <UserProvider>
-            <TransactionProvider>
-              <NavigationContainer>
-                <RootNavigator />
-              </NavigationContainer>
-            </TransactionProvider>
-          </UserProvider>
-        </NetworkProvider>
-        <Toast config={toastConfig} />
-      </GestureHandlerRootView>
+      <UserProvider>
+        <AppContent />
+      </UserProvider>
     </SafeAreaProvider>
   );
 }

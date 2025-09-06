@@ -21,7 +21,7 @@ export interface PaymentLinkResponse {
 
 export class StripePaymentService {
   private static readonly BASE_URL =
-    "https://handypay-backend.onrender.com/api/stripe";
+    "https://handypay-backend.handypay.workers.dev/api/stripe";
 
   /**
    * Create a Stripe payment link/invoice with destination charges

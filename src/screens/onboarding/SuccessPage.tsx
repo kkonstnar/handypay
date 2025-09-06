@@ -56,7 +56,7 @@ export default function SuccessPage({ navigation }: SuccessPageProps): React.Rea
       // FIRST: Check backend API (this is where webhook updates happen)
       console.log('🔍 Checking backend API first (webhook source of truth)...');
       const backendResponse = await fetch(
-        `https://handypay-backend.onrender.com/api/stripe/user-account/${user.id}`
+        `https://handypay-backend.handypay.workers.dev/api/stripe/user-account/${user.id}`
       );
 
       if (backendResponse.ok) {
@@ -69,7 +69,7 @@ export default function SuccessPage({ navigation }: SuccessPageProps): React.Rea
 
           // Get the account status from Stripe via backend
           const statusResponse = await fetch(
-            `https://handypay-backend.onrender.com/api/stripe/account-status`,
+            `https://handypay-backend.handypay.workers.dev/api/stripe/account-status`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -110,7 +110,7 @@ export default function SuccessPage({ navigation }: SuccessPageProps): React.Rea
 
         // Get the account status from Stripe via backend
         const statusResponse = await fetch(
-          `https://handypay-backend.onrender.com/api/stripe/account-status/${userFromDb.stripe_account_id}`
+          `https://handypay-backend.handypay.workers.dev/api/stripe/account-status/${userFromDb.stripe_account_id}`
         );
         const statusData = await statusResponse.json();
 
@@ -129,7 +129,7 @@ export default function SuccessPage({ navigation }: SuccessPageProps): React.Rea
 
       // FINAL FALLBACK: Check backend API (for backward compatibility)
       console.log('🔄 No Supabase data found, checking backend API...');
-      const response = await fetch(`https://handypay-backend.onrender.com/api/stripe/user-account/${user.id}`);
+      const response = await fetch(`https://handypay-backend.handypay.workers.dev/api/stripe/user-account/${user.id}`);
       const userData = await response.json();
 
       if (!response.ok || !userData.stripe_account_id) {
@@ -151,7 +151,7 @@ export default function SuccessPage({ navigation }: SuccessPageProps): React.Rea
 
       // Check the account status with Stripe
       const statusResponse = await fetch(
-        `https://handypay-backend.onrender.com/api/stripe/account-status/${userData.stripe_account_id}`
+        `https://handypay-backend.handypay.workers.dev/api/stripe/account-status/${userData.stripe_account_id}`
       );
       const statusData = await statusResponse.json();
 

@@ -55,7 +55,7 @@ function CustomTabBar({ state, descriptors, navigation }: any): React.ReactEleme
             if (route.name === 'Payouts') {
               if (user?.faceIdEnabled) {
                 // Use Face ID authentication
-                const authenticated = await BiometricAuthService.authenticateWithPrompt(
+                const authSuccess = await BiometricAuthService.authenticateWithPrompt(
                   'Authenticate to access your wallet',
                   {
                     showErrorAlert: true,
@@ -65,10 +65,17 @@ function CustomTabBar({ state, descriptors, navigation }: any): React.ReactEleme
                     }
                   }
                 );
+
+                // If authentication failed or was cancelled, don't navigate
+                if (!authSuccess) {
+                  console.log('❌ Face ID authentication failed or cancelled, aborting navigation');
+                  return;
+                }
               } else if (user?.safetyPinEnabled) {
                 // Use Safety PIN authentication
                 setPendingRoute(route.name);
                 setShowSafetyPinAuth(true);
+                // Don't navigate here - the PIN modal will handle navigation when verified
               } else {
                 // No authentication required
                 navigation.navigate(route.name);

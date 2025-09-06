@@ -27,15 +27,21 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
   // Manual test function to trigger webhook logic
   const testWebhookUpdate = async () => {
     try {
-      console.log('🧪 Testing webhook update manually...');
-      console.log('📊 Using accountId:', currentStripeAccountId, 'userId:', user?.id);
+      // Only log in development mode
+      if (__DEV__) {
+        console.log('🧪 Testing webhook update manually...');
+        console.log('📊 Using accountId:', currentStripeAccountId, 'userId:', user?.id);
+      }
 
       if (!currentStripeAccountId || !user?.id) {
-        console.log('⚠️ Test webhook attempted without required data:', {
-          hasAccountId: !!currentStripeAccountId,
-          hasUserId: !!user?.id,
-          userId: user?.id
-        });
+        // Only log in development mode
+        if (__DEV__) {
+          console.log('⚠️ Test webhook attempted without required data:', {
+            hasAccountId: !!currentStripeAccountId,
+            hasUserId: !!user?.id,
+            userId: user?.id
+          });
+        }
 
         Toast.show({
           type: 'error',
@@ -45,7 +51,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         return;
       }
 
-      const response = await fetch('https://handypay-backend.onrender.com/api/stripe/test-account-update', {
+      const response = await fetch('https://handypay-backend.handypay.workers.dev/api/stripe/test-account-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -186,7 +192,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
       console.log('🔍 Checking onboarding status...');
 
       const userAccountResponse = await fetch(
-        `https://handypay-backend.onrender.com/api/stripe/user-account/${user.id}`
+        `https://handypay-backend.handypay.workers.dev/api/stripe/user-account/${user.id}`
       );
 
       if (userAccountResponse.ok) {
@@ -207,7 +213,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
           const accountId = userData.stripe_account_id || userData.stripeAccountId;
 
           const statusResponse = await fetch(
-            `https://handypay-backend.onrender.com/api/stripe/account-status`,
+            `https://handypay-backend.handypay.workers.dev/api/stripe/account-status`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -248,7 +254,10 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
   // Cleanup polling on component unmount
   useEffect(() => {
     return () => {
-      console.log('🧹 GetStartedPage unmounting - comprehensive cleanup...');
+      // Only log cleanup in development mode
+      if (__DEV__) {
+        console.log('🧹 GetStartedPage cleanup');
+      }
 
       // Stop all polling
       stopOnboardingStatusCheck();
@@ -263,8 +272,6 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         clearInterval(onboardingStatusCheckInterval);
         setOnboardingStatusCheckInterval(null);
       }
-
-      console.log('✅ GetStartedPage cleanup complete');
     };
   }, []);
 
@@ -433,7 +440,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
       try {
         // Check if user has already completed onboarding
         const userAccountResponse = await fetch(
-          `https://handypay-backend.onrender.com/api/stripe/user-account/${user.id}`
+          `https://handypay-backend.handypay.workers.dev/api/stripe/user-account/${user.id}`
         );
 
         if (userAccountResponse.ok) {
@@ -448,7 +455,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
 
             // Get account status from Stripe
             const statusResponse = await fetch(
-              `https://handypay-backend.onrender.com/api/stripe/account-status`,
+              `https://handypay-backend.handypay.workers.dev/api/stripe/account-status`,
               {
                 method: 'POST',
                 headers: {
@@ -511,7 +518,10 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
   // Handle navigation focus/blur to reset state when user navigates away and back
   useEffect(() => {
     const unsubscribeFocus = navigation.addListener('focus', () => {
-      console.log('🎯 GetStartedPage focused - resetting state for fresh start');
+      // Only log in development mode to reduce console spam during login
+      if (__DEV__) {
+        console.log('🎯 GetStartedPage focused - resetting state');
+      }
 
       // Reset all state when user navigates back to this screen
       setLoading(false);
@@ -520,18 +530,22 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
 
       // Stop any lingering polling
       stopOnboardingStatusCheck();
-
-      console.log('🔄 GetStartedPage state reset complete');
     });
 
     const unsubscribeBlur = navigation.addListener('blur', () => {
-      console.log('👁️ GetStartedPage blurred - cleaning up on navigation away');
+      // Only log in development mode
+      if (__DEV__) {
+        console.log('👁️ GetStartedPage blurred - cleaning up');
+      }
 
       // Clean up when user navigates away from this screen
       stopOnboardingStatusCheck();
       setLoading(false);
 
-      console.log('🧹 GetStartedPage blur cleanup complete');
+      // Only log blur cleanup in development mode
+      if (__DEV__) {
+        console.log('🧹 GetStartedPage blur cleanup');
+      }
     });
 
     return () => {
@@ -574,7 +588,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
 
           // Fallback to deployed backend API
           const userAccountResponse = await fetch(
-            `https://handypay-backend.onrender.com/api/stripe/user-account/${user.id}`
+            `https://handypay-backend.handypay.workers.dev/api/stripe/user-account/${user.id}`
           );
 
           if (!userAccountResponse.ok) {
@@ -597,7 +611,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
 
       // Step 2: Get account status using the existing deployed API
       const statusResponse = await fetch(
-        `https://handypay-backend.onrender.com/api/stripe/account-status`,
+        `https://handypay-backend.handypay.workers.dev/api/stripe/account-status`,
         {
           method: 'POST',
           headers: {
@@ -632,7 +646,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         // Step 4: Store in backend database
         try {
           const backendResponse = await fetch(
-            'https://handypay-backend.onrender.com/api/stripe/complete-onboarding',
+            'https://handypay-backend.handypay.workers.dev/api/stripe/complete-onboarding',
             {
               method: 'POST',
               headers: {
@@ -839,7 +853,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
     try {
       // First check if user has already completed onboarding (fast check)
       const userAccountResponse = await Promise.race([
-        fetch(`https://handypay-backend.onrender.com/api/stripe/user-account/${user.id}`),
+        fetch(`https://handypay-backend.handypay.workers.dev/api/stripe/user-account/${user.id}`),
         new Promise<Response>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
       ]);
 
@@ -848,7 +862,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         if (userData.stripe_account_id || userData.stripeAccountId) {
           const accountId = userData.stripe_account_id || userData.stripeAccountId;
           const statusResponse = await Promise.race([
-            fetch(`https://handypay-backend.onrender.com/api/stripe/account-status`, {
+            fetch(`https://handypay-backend.handypay.workers.dev/api/stripe/account-status`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -897,14 +911,14 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         firstName: firstName,
         lastName: lastName,
         email: user.email || 'user@handypay.com',
-        refresh_url: 'https://handypay-backend.onrender.com/stripe/refresh',
-        return_url: 'https://handypay-backend.onrender.com/stripe/return',
+        refresh_url: 'https://handypay-backend.handypay.workers.dev/stripe/refresh',
+        return_url: 'https://handypay-backend.handypay.workers.dev/stripe/return',
       };
 
       console.log('Starting Stripe onboarding for user:', requestData);
 
       // Call your backend API to create Stripe account and onboarding link
-      const response = await fetch('https://handypay-backend.onrender.com/api/stripe/create-account-link', {
+      const response = await fetch('https://handypay-backend.handypay.workers.dev/api/stripe/create-account-link', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
