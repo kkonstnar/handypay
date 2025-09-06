@@ -205,7 +205,7 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
           }
 
           if (code) {
-            const tokenResponse = await fetch(`${API_URL}/api/auth/google/token`, {
+            const tokenResponse = await fetch(`${API_URL}/auth/google/token`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
