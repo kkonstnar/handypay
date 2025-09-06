@@ -40,3 +40,6 @@ yarn-error.*
 
 # Backend
 handypay-backend/
+
+# Test Results
+tests/test-results.json

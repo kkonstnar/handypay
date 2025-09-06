@@ -1,0 +1,115 @@
+{
+  "timestamp": "2025-09-06T16:00:21.250Z",
+  "environment": "https://handypay-backend.handypay.workers.dev",
+  "summary": {
+    "total": 17,
+    "passed": 15,
+    "failed": 2,
+    "successRate": "88.2%",
+    "duration": "0.80s"
+  },
+  "tests": [
+    {
+      "name": "Health Check",
+      "passed": "HandyPay Auth Server is running!",
+      "details": "",
+      "timestamp": "2025-09-06T16:00:20.575Z"
+    },
+    {
+      "name": "Database Connection",
+      "passed": true,
+      "details": "",
+      "timestamp": "2025-09-06T16:00:20.925Z"
+    },
+    {
+      "name": "Auth Protection: /api/users/sync",
+      "passed": true,
+      "details": "",
+      "timestamp": "2025-09-06T16:00:20.952Z"
+    },
+    {
+      "name": "Auth Protection: /api/stripe/user-account/test123",
+      "passed": true,
+      "details": "",
+      "timestamp": "2025-09-06T16:00:20.970Z"
+    },
+    {
+      "name": "Auth Protection: /api/transactions/test123",
+      "passed": true,
+      "details": "",
+      "timestamp": "2025-09-06T16:00:20.991Z"
+    },
+    {
+      "name": "Input Validation: SQL Injection Attempt",
+      "passed": true,
+      "details": "",
+      "timestamp": "2025-09-06T16:00:21.008Z"
+    },
+    {
+      "name": "Input Validation: XSS Injection Attempt",
+      "passed": true,
+      "details": "",
+      "timestamp": "2025-09-06T16:00:21.023Z"
+    },
+    {
+      "name": "Input Validation: Invalid Email Format",
+      "passed": true,
+      "details": "",
+      "timestamp": "2025-09-06T16:00:21.037Z"
+    },
+    {
+      "name": "Security Headers",
+      "passed": false,
+      "details": "1/4 security headers present",
+      "timestamp": "2025-09-06T16:00:21.051Z"
+    },
+    {
+      "name": "CORS Policy",
+      "passed": false,
+      "details": "Status: 204",
+      "timestamp": "2025-09-06T16:00:21.067Z"
+    },
+    {
+      "name": "Rate Limiting",
+      "passed": true,
+      "details": "20/20 requests succeeded",
+      "timestamp": "2025-09-06T16:00:21.156Z"
+    },
+    {
+      "name": "Load Performance",
+      "passed": true,
+      "details": "Average response time: 2.60ms",
+      "timestamp": "2025-09-06T16:00:21.183Z"
+    },
+    {
+      "name": "Error Handling: Invalid Endpoint",
+      "passed": true,
+      "details": "",
+      "timestamp": "2025-09-06T16:00:21.196Z"
+    },
+    {
+      "name": "Error Handling: Malformed JSON",
+      "passed": true,
+      "details": "",
+      "timestamp": "2025-09-06T16:00:21.210Z"
+    },
+    {
+      "name": "Stripe Integration: /api/stripe/user-account/test123",
+      "passed": true,
+      "details": "Properly protected",
+      "timestamp": "2025-09-06T16:00:21.224Z"
+    },
+    {
+      "name": "Stripe Integration: /api/stripe/create-account-link",
+      "passed": true,
+      "details": "Properly protected",
+      "timestamp": "2025-09-06T16:00:21.237Z"
+    },
+    {
+      "name": "Webhook Endpoint",
+      "passed": true,
+      "details": "Properly protected",
+      "timestamp": "2025-09-06T16:00:21.250Z"
+    }
+  ]
+}

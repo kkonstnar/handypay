@@ -281,6 +281,35 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
   const { promptAsync: applePromptAsync } = useAppleAuth();
   const { promptAsync: googlePromptAsync } = useGoogleAuth();
 
+  // Reset loading state when component unmounts or focus changes
+  useEffect(() => {
+    return () => {
+      // Reset loading state when component unmounts
+      setLoading(false);
+      setProvider(null);
+    };
+  }, []);
+
+  // Reset loading state when screen gets focus (user navigates back)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (loading || provider) {
+        console.log('🔄 Resetting auth state due to screen focus');
+        setLoading(false);
+        setProvider(null);
+
+        // Show cancellation toast
+        Toast.show({
+          type: 'info',
+          text1: 'Login cancelled',
+          text2: 'You can try again anytime'
+        });
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation, loading, provider]);
+
 
 
 
@@ -329,6 +358,20 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
         // Don't navigate here to avoid conflicts with RootNavigator logic
       } else if (result.type === 'error') {
         Alert.alert('Error', 'Apple authentication failed');
+      } else if (result.type === 'cancel') {
+        console.log('🚫 Apple authentication cancelled by user');
+        Toast.show({
+          type: 'info',
+          text1: 'Login cancelled',
+          text2: 'You can try again anytime'
+        });
+      } else {
+        console.log('🚫 Apple authentication dismissed/cancelled');
+        Toast.show({
+          type: 'info',
+          text1: 'Login cancelled',
+          text2: 'You can try again anytime'
+        });
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to start Apple authentication');
@@ -385,6 +428,20 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
         return; // Wait for callback
       } else if (result.type === 'error') {
         Alert.alert('Error', 'Google authentication failed');
+      } else if (result.type === 'cancel') {
+        console.log('🚫 Google authentication cancelled by user');
+        Toast.show({
+          type: 'info',
+          text1: 'Login cancelled',
+          text2: 'You can try again anytime'
+        });
+      } else {
+        console.log('🚫 Google authentication dismissed/cancelled');
+        Toast.show({
+          type: 'info',
+          text1: 'Login cancelled',
+          text2: 'You can try again anytime'
+        });
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to start Google authentication');

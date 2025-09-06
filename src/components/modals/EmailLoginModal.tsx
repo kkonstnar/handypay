@@ -27,10 +27,26 @@ export default function EmailLoginModal({ visible, onClose }: EmailLoginModalPro
       return;
     }
 
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    // Input sanitization
+    const sanitizedEmail = email.trim().toLowerCase();
+    const sanitizedPassword = password.trim();
+
+    // Basic validation
+    if (sanitizedEmail.length === 0 || sanitizedPassword.length === 0) {
+      Alert.alert('Invalid Input', 'Please enter valid email and password.');
+      return;
+    }
+
+    // Enhanced email validation
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(sanitizedEmail)) {
       Alert.alert('Invalid Email', 'Please enter a valid email address.');
+      return;
+    }
+
+    // Password strength validation (optional)
+    if (sanitizedPassword.length < 6) {
+      Alert.alert('Weak Password', 'Password must be at least 6 characters long.');
       return;
     }
 
@@ -38,12 +54,12 @@ export default function EmailLoginModal({ visible, onClose }: EmailLoginModalPro
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     try {
-      console.log('🔐 Attempting email login for:', email);
+      console.log('🔐 Attempting email login for:', sanitizedEmail);
 
       let userData;
 
       // Check for test user credentials
-      if (email === 'test@example.com' && password === 'test123') {
+      if (sanitizedEmail === 'test@example.com' && sanitizedPassword === 'test123') {
         console.log('🎯 Test user login detected');
 
         // Create consistent test user
@@ -74,9 +90,9 @@ export default function EmailLoginModal({ visible, onClose }: EmailLoginModalPro
         // In a real app, this would validate against your backend
         userData = {
           id: `email_user_${Date.now()}`,
-          email: email,
-          fullName: email.split('@')[0], // Use email prefix as name
-          firstName: email.split('@')[0],
+          email: sanitizedEmail,
+          fullName: sanitizedEmail.split('@')[0], // Use email prefix as name
+          firstName: sanitizedEmail.split('@')[0],
           lastName: '',
           authProvider: 'google' as const, // Use google for compatibility
           appleUserId: null,
@@ -100,7 +116,7 @@ export default function EmailLoginModal({ visible, onClose }: EmailLoginModalPro
       await setUser(userData);
       await updateLastLogin();
 
-      console.log('✅ Email login successful for:', email);
+      console.log('✅ Email login successful for:', sanitizedEmail);
 
       // Close modal and navigate to biometrics
       onClose();
