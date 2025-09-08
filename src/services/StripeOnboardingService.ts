@@ -72,8 +72,10 @@ class StripeOnboardingManager {
                 ? user.fullName.split(" ").slice(1).join(" ")
                 : "Unknown"),
             email: user.email || "user@handypay.com",
-            refresh_url: "handypay://stripe/refresh",
-            return_url: "handypay://stripe/success",
+            refresh_url:
+              "https://handypay-backend.handypay.workers.dev/stripe/refresh",
+            return_url:
+              "https://handypay-backend.handypay.workers.dev/stripe/return",
           }),
         }
       );
@@ -216,8 +218,10 @@ class StripeOnboardingManager {
             ? user.fullName.split(" ").slice(1).join(" ")
             : "Unknown"),
         email: user.email || "user@handypay.com",
-        refresh_url: "handypay://stripe/refresh",
-        return_url: "handypay://stripe/success",
+        refresh_url:
+          "https://handypay-backend.handypay.workers.dev/stripe/refresh",
+        return_url:
+          "https://handypay-backend.handypay.workers.dev/stripe/return",
       };
 
       const response = await fetch(
