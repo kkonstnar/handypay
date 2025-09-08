@@ -38,6 +38,12 @@ export class ApiService {
 
       // Use standard fetch with Better Auth session management
       try {
+        console.log(`🌐 Making API request to: ${endpoint}`, {
+          method: options.method || "GET",
+          hasBody: !!options.body,
+          url: url
+        });
+
         const data = await fetch(url, {
           method: options.method || "GET",
           headers: {
@@ -47,6 +53,12 @@ export class ApiService {
           body: options.body,
           credentials: "include", // Include cookies for Better Auth session
           ...options,
+        });
+
+        console.log(`📡 API Response status: ${data.status}`, {
+          ok: data.ok,
+          statusText: data.statusText,
+          url: data.url
         });
 
         if (!data.ok) {
