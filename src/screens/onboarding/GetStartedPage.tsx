@@ -22,6 +22,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
   const [loading, setLoading] = useState(false);
   const [currentStripeAccountId, setCurrentStripeAccountId] = useState<string | null>(null);
   const [isOnboardingInProgress, setIsOnboardingInProgress] = useState(false);
+  const [hasIncompleteOnboarding, setHasIncompleteOnboarding] = useState(false);
   const [onboardingStatusCheckInterval, setOnboardingStatusCheckInterval] = useState<NodeJS.Timeout | null>(null);
 
   // Manual test function to trigger webhook logic
@@ -447,11 +448,15 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
           const userData = await userAccountResponse.json();
           console.log('📊 User data from backend:', userData);
 
-          // If user has a Stripe account ID, check its status
-          if (userData.stripe_account_id || userData.stripeAccountId) {
-            const accountId = userData.stripe_account_id || userData.stripeAccountId;
+            // If user has a Stripe account ID, check its status
+            if (userData.stripe_account_id || userData.stripeAccountId) {
+              const accountId = userData.stripe_account_id || userData.stripeAccountId;
 
-            console.log('📋 Found existing Stripe account:', accountId);
+              console.log('📋 Found existing Stripe account:', accountId);
+
+              // Set the current account ID and mark as incomplete onboarding
+              setCurrentStripeAccountId(accountId);
+              setHasIncompleteOnboarding(true);
 
             // Get account status from Stripe
             const statusResponse = await fetch(
@@ -511,8 +516,8 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
       }
     };
 
-    // Temporarily disable initial status check to debug multiple polling issue
-    // checkOnboardingStatus();
+    // Check onboarding status on component mount
+    checkOnboardingStatus();
   }, [user, navigation]);
 
   // Handle navigation focus/blur to reset state when user navigates away and back
@@ -913,6 +918,8 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         email: user.email || 'user@handypay.com',
         refresh_url: 'https://handypay-backend.handypay.workers.dev/stripe/refresh',
         return_url: 'https://handypay-backend.handypay.workers.dev/stripe/return',
+        // Include existing account ID if continuing onboarding
+        ...(currentStripeAccountId && { stripeAccountId: currentStripeAccountId }),
       };
 
       console.log('Starting Stripe onboarding for user:', requestData);
@@ -1042,7 +1049,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color="#ffffff" />
               <Text style={[styles.primaryBtnText, { marginLeft: 8 }]}>
-                {currentStripeAccountId ? "Verifying your account..." : "Starting onboarding..."}
+                {hasIncompleteOnboarding ? "Continuing onboarding..." : currentStripeAccountId ? "Verifying your account..." : "Starting onboarding..."}
               </Text>
             </View>
           ) : isOnboardingInProgress ? (
@@ -1051,7 +1058,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
             </Text>
           ) : (
             <Text style={styles.primaryBtnText}>
-              Get started
+              {hasIncompleteOnboarding ? "Continue Onboarding" : "Get started"}
             </Text>
           )}
         </Button>
