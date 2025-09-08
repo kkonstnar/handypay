@@ -1,23 +1,86 @@
 import { Transaction, Payout, Balance, ApiResponse } from "../types";
-import { createAuthClient } from "@better-auth/client";
 
 // API Base URL - points to our backend
 const API_BASE_URL = "https://handypay-backend.handypay.workers.dev";
 
-// Production-ready Better Auth client with secure session management
-export const authClient = createAuthClient({
-  baseURL: API_BASE_URL,
-  fetchOptions: {
-    onRequest: (context) => {
-      console.log("🔐 Better Auth request:", context.url);
-      return context;
-    },
-    onResponse: (context) => {
-      console.log("🔐 Better Auth response:", context.response?.status);
-      return context;
-    },
+// Production-ready auth client with session management
+export const authClient = {
+  // Get current session
+  getSession: async () => {
+    try {
+      console.log("🔍 Getting session from backend...");
+      const response = await fetch(`${API_BASE_URL}/api/auth/session`, {
+        method: "GET",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      console.log("📡 Session response status:", response.status);
+
+      if (response.ok) {
+        const sessionData = await response.json();
+        console.log("✅ Session data received:", sessionData);
+        return { data: sessionData };
+      } else {
+        console.log("❌ No active session found");
+        return { data: null };
+      }
+    } catch (error) {
+      console.error("❌ Session check failed:", error);
+      return { data: null };
+    }
   },
-});
+
+  // Sign out
+  signOut: async () => {
+    try {
+      console.log("🔐 Signing out...");
+      const response = await fetch(`${API_BASE_URL}/api/auth/sign-out`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.ok) {
+        console.log("✅ Signed out successfully");
+        return true;
+      } else {
+        console.warn("⚠️ Sign out response not OK:", response.status);
+        return false;
+      }
+    } catch (error) {
+      console.error("❌ Sign out failed:", error);
+      return false;
+    }
+  },
+
+  // Social sign-in methods
+  signIn: {
+    social: async ({ provider }: { provider: string }) => {
+      console.log(`🔐 Initiating ${provider} sign-in...`);
+      // This will be handled by the ExpoAuthService
+      return { success: true };
+    }
+  },
+
+  // Fetch with authentication
+  $fetch: async (url: string, options: RequestInit = {}) => {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...options.headers,
+    };
+
+    return fetch(url, {
+      ...options,
+      headers,
+      credentials: "include",
+    });
+  }
+};
 
 /**
  * API Service for handling all backend API calls
