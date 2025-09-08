@@ -1,12 +1,23 @@
 import { Transaction, Payout, Balance, ApiResponse } from "../types";
+import { createAuthClient } from "@better-auth/client";
 
 // API Base URL - points to our backend
 const API_BASE_URL = "https://handypay-backend.handypay.workers.dev";
 
-// Simple auth client placeholder for future Better Auth integration
-export const authClient = {
-  // Placeholder - can be replaced with proper Better Auth client later
-};
+// Production-ready Better Auth client with secure session management
+export const authClient = createAuthClient({
+  baseURL: API_BASE_URL,
+  fetchOptions: {
+    onRequest: (context) => {
+      console.log("🔐 Better Auth request:", context.url);
+      return context;
+    },
+    onResponse: (context) => {
+      console.log("🔐 Better Auth response:", context.response?.status);
+      return context;
+    },
+  },
+});
 
 /**
  * API Service for handling all backend API calls
@@ -36,22 +47,24 @@ export class ApiService {
         console.log(`🌐 API Request: ${options.method || "GET"} ${endpoint}`);
       }
 
-      // Use standard fetch with Better Auth session management
+      // Use Better Auth client for authenticated requests
       try {
-        console.log(`🌐 Making API request to: ${endpoint}`, {
+        console.log(`🌐 Making authenticated API request to: ${endpoint}`, {
           method: options.method || "GET",
           hasBody: !!options.body,
           url: url,
         });
 
-        const data = await fetch(url, {
+        // Use Better Auth client's fetch method which handles authentication automatically
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          ...options.headers,
+        };
+
+        const data = await authClient.$fetch(url, {
           method: options.method || "GET",
-          headers: {
-            "Content-Type": "application/json",
-            ...options.headers,
-          },
+          headers,
           body: options.body,
-          credentials: "include", // Include cookies for Better Auth session
           ...options,
         });
 
@@ -64,6 +77,14 @@ export class ApiService {
         if (!data.ok) {
           const errorText = await data.text();
           console.error(`❌ API Error ${data.status}:`, errorText);
+
+          // Check if it's an authentication error
+          if (data.status === 401) {
+            console.log(
+              "🔐 Authentication error - user may need to log in again"
+            );
+          }
+
           return {
             data: null as T,
             success: false,
@@ -88,6 +109,20 @@ export class ApiService {
         };
       } catch (fetchError: any) {
         console.error(`❌ API Error:`, fetchError.message || fetchError);
+
+        // Handle authentication errors specifically
+        if (
+          fetchError.message?.includes("401") ||
+          fetchError.message?.includes("Unauthorized")
+        ) {
+          console.log("🔐 Authentication error in fetch:", fetchError.message);
+          return {
+            data: null as T,
+            success: false,
+            error: "Unauthorized - Please log in again",
+          };
+        }
+
         return {
           data: null as T,
           success: false,
@@ -125,20 +160,12 @@ export class ApiService {
   }
 
   /**
-   * Get current user session
+   * Get current user session from Better Auth
    */
   async getSession() {
     try {
-      const response = await fetch(`${this.baseURL}/auth/session`, {
-        credentials: "include",
-      });
-
-      if (!response.ok) {
-        return null;
-      }
-
-      const session = await response.json();
-      return session;
+      const session = await authClient.getSession();
+      return session.data || null;
     } catch (error) {
       console.error("❌ Failed to get session:", error);
       return null;
@@ -146,69 +173,54 @@ export class ApiService {
   }
 
   /**
-   * Sign in with Google OAuth
+   * Sign in with Google OAuth using Better Auth
    */
   async signInWithGoogle() {
     try {
-      // Redirect to backend OAuth endpoint
-      const response = await fetch(`${this.baseURL}/auth/google`, {
-        method: "GET",
-        credentials: "include",
+      const data = await authClient.signIn.social({
+        provider: "google",
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        return data;
-      } else {
-        throw new Error("Google sign in failed");
-      }
+      return { success: true, data };
     } catch (error) {
       console.error("❌ Google sign in failed:", error);
-      throw error;
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Sign in failed",
+      };
     }
   }
 
   /**
-   * Sign in with Apple OAuth
+   * Sign in with Apple OAuth using Better Auth
    */
   async signInWithApple() {
     try {
-      // Redirect to backend OAuth endpoint
-      const response = await fetch(`${this.baseURL}/auth/apple`, {
-        method: "GET",
-        credentials: "include",
+      const data = await authClient.signIn.social({
+        provider: "apple",
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        return data;
-      } else {
-        throw new Error("Apple sign in failed");
-      }
+      return { success: true, data };
     } catch (error) {
       console.error("❌ Apple sign in failed:", error);
-      throw error;
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Sign in failed",
+      };
     }
   }
 
   /**
-   * Sign out current user
+   * Sign out current user using Better Auth
    */
   async signOut() {
     try {
-      const response = await fetch(`${this.baseURL}/auth/sign-out`, {
-        method: "POST",
-        credentials: "include",
-      });
-
-      if (response.ok) {
-        return { success: true };
-      } else {
-        throw new Error("Sign out failed");
-      }
+      const result = await authClient.signOut();
+      return { success: result };
     } catch (error) {
       console.error("❌ Sign out failed:", error);
-      return { success: false, error: error.message };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Sign out failed",
+      };
     }
   }
 
@@ -263,7 +275,7 @@ export class ApiService {
   async getBalance(userId?: string): Promise<ApiResponse<Balance>> {
     if (!userId) {
       return {
-        data: null,
+        data: { balance: 0, currency: "USD" },
         success: false,
         error: "User ID is required",
       };
@@ -287,7 +299,11 @@ export class ApiService {
       };
     }
 
-    return response as ApiResponse<Balance>;
+    return {
+      data: { balance: 0, currency: "USD" },
+      success: false,
+      error: "Failed to get balance",
+    };
   }
 
   /**

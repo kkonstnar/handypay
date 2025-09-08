@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SupabaseUserService } from '../services/SupabaseService';
 import { hashPin, verifyPin } from '../utils/pinUtils';
+import { authClient, apiService } from '../services';
 
 // Sync user data to backend database for Stripe account creation
 const syncUserToBackend = async (userData: UserData): Promise<any> => {
@@ -115,12 +116,67 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadUserData = async () => {
     try {
-      const userData = await AsyncStorage.getItem(USER_STORAGE_KEY);
-      if (userData) {
-        setUserState(JSON.parse(userData));
+      console.log('🔍 Checking for authenticated session...');
+
+      // Check for Better Auth session first
+      const session = await authClient.getSession();
+      console.log('📋 Session check result:', session);
+
+      if (session.data?.user) {
+        console.log('✅ Found authenticated session:', session.data.user.id);
+
+        // Create user data from authenticated session
+        const userData: UserData = {
+          id: session.data.user.id,
+          email: session.data.user.email || null,
+          fullName: session.data.user.name || null,
+          firstName: session.data.user.name?.split(' ')[0] || null,
+          lastName: session.data.user.name?.split(' ').slice(1).join(' ') || null,
+          authProvider: session.data.user.image ? 'google' : 'apple',
+          appleUserId: session.data.user.appleUserId || null,
+          googleUserId: session.data.user.googleUserId || null,
+          stripeAccountId: session.data.user.stripeAccountId || null,
+          stripeOnboardingCompleted: session.data.user.stripeOnboardingCompleted || false,
+          memberSince: session.data.user.createdAt || new Date().toISOString(),
+          faceIdEnabled: session.data.user.faceIdEnabled || false,
+          safetyPinEnabled: session.data.user.safetyPinEnabled || false,
+          avatarUri: session.data.user.image || undefined,
+        };
+
+        // Store in AsyncStorage for offline access
+        await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
+        setUserState(userData);
+        console.log('✅ User authenticated and loaded from session');
+      } else {
+        // No authenticated session, try to load from AsyncStorage for offline mode
+        console.log('⚠️ No authenticated session found, checking local storage...');
+        const storedUserData = await AsyncStorage.getItem(USER_STORAGE_KEY);
+        if (storedUserData) {
+          const userData = JSON.parse(storedUserData);
+          setUserState(userData);
+          console.log('⚠️ Loaded user data from storage (session expired)');
+        } else {
+          console.log('ℹ️ No user data found');
+          setUserState(null);
+        }
       }
     } catch (error) {
-      console.error('Error loading user data:', error);
+      console.error('❌ Error loading user data:', error);
+
+      // Fallback: try to load from AsyncStorage
+      try {
+        const storedUserData = await AsyncStorage.getItem(USER_STORAGE_KEY);
+        if (storedUserData) {
+          const userData = JSON.parse(storedUserData);
+          setUserState(userData);
+          console.log('⚠️ Failed to check session, loaded user data from storage');
+        } else {
+          setUserState(null);
+        }
+      } catch (storageError) {
+        console.error('❌ Error loading from storage:', storageError);
+        setUserState(null);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -184,13 +240,22 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const clearUser = async () => {
     try {
+      // Sign out from Better Auth first - this will clear the server session
+      try {
+        await authClient.signOut();
+        console.log('✅ Signed out from Better Auth server session');
+      } catch (authError) {
+        console.warn('⚠️ Failed to sign out from Better Auth:', authError);
+      }
+
+      // Clear local storage
       await AsyncStorage.removeItem(USER_STORAGE_KEY);
       await AsyncStorage.removeItem('@handypay_cached_avatar'); // Clear cached avatar
       setUserState(null);
       setCachedAvatarUri(null); // Clear cached avatar state
-      console.log('User data and cached avatar cleared');
+      console.log('✅ User data and cached avatar cleared');
     } catch (error) {
-      console.error('Error clearing user data:', error);
+      console.error('❌ Error clearing user data:', error);
     }
   };
 

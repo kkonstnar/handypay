@@ -101,7 +101,17 @@ function ActivityScreen(): React.ReactElement {
     loading: apiLoading,
     error: apiError,
     refetch: refetchTransactions
-  } = useApi<Transaction[] | { transactions: Transaction[] }>(() => apiService.getUserTransactions(userData?.id || ''));
+  } = useApi<Transaction[] | { transactions: Transaction[] }>(() => {
+    // Only fetch if we have authenticated user data
+    if (userData?.id) {
+      console.log('📡 Fetching transactions for user:', userData.id);
+      return apiService.getUserTransactions(userData.id);
+    } else {
+      console.log('⚠️ No authenticated user data available for transaction fetch');
+      // Return a promise that resolves to empty data
+      return Promise.resolve({ data: [], success: true });
+    }
+  });
 
   // Search API functionality
   const performAPISearch = React.useCallback(async (query: string) => {

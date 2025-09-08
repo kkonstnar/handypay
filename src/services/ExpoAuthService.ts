@@ -1,6 +1,7 @@
 import * as AppleAuthentication from "expo-apple-authentication";
 import * as AuthSession from "expo-auth-session";
 import { Linking, Platform } from "react-native";
+import { authClient, apiService } from "./api";
 
 // Backend API URL for token verification
 const API_URL = "https://handypay-backend.handypay.workers.dev";
@@ -18,11 +19,11 @@ if (__DEV__) {
   console.log("🔗 Google Client ID configured:", !!GOOGLE_CLIENT_ID);
 }
 
-// Use native Apple Authentication instead of OAuth web flow
+// Use native Apple Authentication with Better Auth integration
 export const useAppleAuth = () => {
   // Only log in development mode to reduce console spam
   if (__DEV__) {
-    console.log("Apple Auth Setup (Native):", {
+    console.log("Apple Auth Setup (Native + Better Auth):", {
       isAvailable: AppleAuthentication.isAvailableAsync,
       isDevelopment: __DEV__,
     });
@@ -53,10 +54,96 @@ export const useAppleAuth = () => {
         ],
       });
 
-      return {
-        type: "success",
-        params: credential,
-      };
+      console.log("🍎 Apple credential received:", {
+        user: credential.user,
+        hasEmail: !!credential.email,
+        hasName: !!credential.fullName,
+      });
+
+      // Create authenticated session with Better Auth
+      try {
+        console.log("🔐 Creating authenticated session with Better Auth...");
+
+        // Use Better Auth's Apple sign-in to create a proper server session
+        const authResult = await authClient.signIn.social({
+          provider: "apple",
+          callbackURL: "handypay://auth/callback",
+        });
+
+        if (authResult.data?.session) {
+          console.log("✅ Better Auth Apple session created");
+
+          // Verify the session was created
+          const session = await authClient.getSession();
+          if (session.data?.user) {
+            console.log("✅ Session verified:", session.data.user.id);
+
+            // Create user data from the authenticated session
+            const userData = {
+              id: session.data.user.id,
+              email: session.data.user.email || credential.email || null,
+              fullName: session.data.user.name || null,
+              firstName: credential.fullName?.givenName || null,
+              lastName: credential.fullName?.familyName || null,
+              authProvider: "apple" as const,
+              appleUserId: credential.user || session.data.user.id,
+              googleUserId: null,
+              stripeAccountId: session.data.user.stripeAccountId || null,
+              stripeOnboardingCompleted:
+                session.data.user.stripeOnboardingCompleted || false,
+              memberSince:
+                session.data.user.createdAt || new Date().toISOString(),
+              faceIdEnabled: session.data.user.faceIdEnabled || false,
+              safetyPinEnabled: session.data.user.safetyPinEnabled || false,
+              avatarUri: session.data.user.image || undefined,
+            };
+
+            console.log("✅ Apple authentication successful:", userData.id);
+
+            return {
+              type: "success",
+              params: credential,
+              userData: userData,
+              session: session.data,
+            };
+          } else {
+            console.error("❌ Session created but user data missing");
+            return {
+              type: "error",
+              error: {
+                code: "SESSION_ERROR",
+                message: "Session created but user data is missing",
+              },
+            };
+          }
+        } else {
+          console.error(
+            "❌ Better Auth Apple sign-in failed:",
+            authResult.error
+          );
+          return {
+            type: "error",
+            error: {
+              code: "AUTH_FAILED",
+              message: "Better Auth authentication failed",
+              details: authResult.error?.message || "Unknown error",
+            },
+          };
+        }
+      } catch (authError) {
+        console.error("❌ Better Auth integration error:", authError);
+        return {
+          type: "error",
+          error: {
+            code: "AUTH_ERROR",
+            message: "Failed to authenticate with server",
+            details:
+              authError instanceof Error
+                ? authError.message
+                : "Unknown auth error",
+          },
+        };
+      }
     } catch (error: any) {
       if (error.code === "ERR_CANCELED") {
         return { type: "cancel" };
@@ -94,11 +181,11 @@ export const useAppleAuth = () => {
   };
 };
 
-// Use Google OAuth with backend proxy
+// Use Google OAuth with Better Auth integration
 export const useGoogleAuth = () => {
   // Only log in development mode to reduce console spam
   if (__DEV__) {
-    console.log("Google Auth Setup:", {
+    console.log("Google Auth Setup (Better Auth):", {
       clientId: !!GOOGLE_CLIENT_ID,
       oauthUrl: GOOGLE_OAUTH_URL,
       isDevelopment: __DEV__,
@@ -107,38 +194,94 @@ export const useGoogleAuth = () => {
 
   const promptAsync = async () => {
     try {
-      console.log("Starting Google OAuth flow via backend...");
+      console.log("Starting Google OAuth flow with Better Auth...");
 
-      // Generate a state parameter for security
-      const state = Math.random().toString(36).substring(7);
+      // Use Better Auth's Google sign-in to create a proper server session
+      try {
+        console.log(
+          "🔐 Creating authenticated session with Better Auth for Google..."
+        );
 
-      // Construct the backend OAuth URL - Use production callback even in development
-      const oauthUrl = new URL(GOOGLE_OAUTH_URL);
-      oauthUrl.searchParams.set("state", state);
-      // Use the correct Better Auth callback URL
-      oauthUrl.searchParams.set(
-        "redirect_uri",
-        `${API_URL}/auth/callback/google`
-      );
+        const authResult = await authClient.signIn.social({
+          provider: "google",
+          callbackURL: "handypay://auth/callback",
+        });
 
-      console.log("🔗 OAuth URL being constructed:", oauthUrl.toString());
-      console.log("🔗 Using callback URL:", `${API_URL}/auth/callback/google`);
+        if (authResult.data?.session) {
+          console.log("✅ Better Auth Google session created");
 
-      console.log("Redirecting to backend OAuth URL:", oauthUrl.toString());
+          // Verify the session was created
+          const session = await authClient.getSession();
+          if (session.data?.user) {
+            console.log("✅ Session verified:", session.data.user.id);
 
-      // Open the backend OAuth URL in the browser
-      const supported = await Linking.canOpenURL(oauthUrl.toString());
-      if (!supported) {
-        throw new Error("Cannot open OAuth URL");
+            // Create user data from the authenticated session
+            const userData = {
+              id: session.data.user.id,
+              email: session.data.user.email || null,
+              fullName: session.data.user.name || null,
+              firstName: session.data.user.name?.split(" ")[0] || null,
+              lastName:
+                session.data.user.name?.split(" ").slice(1).join(" ") || null,
+              authProvider: "google" as const,
+              appleUserId: null,
+              googleUserId: session.data.user.id,
+              stripeAccountId: session.data.user.stripeAccountId || null,
+              stripeOnboardingCompleted:
+                session.data.user.stripeOnboardingCompleted || false,
+              memberSince:
+                session.data.user.createdAt || new Date().toISOString(),
+              faceIdEnabled: session.data.user.faceIdEnabled || false,
+              safetyPinEnabled: session.data.user.safetyPinEnabled || false,
+              avatarUri: session.data.user.image || undefined,
+            };
+
+            console.log("✅ Google authentication successful:", userData.id);
+
+            return {
+              type: "success",
+              params: {},
+              userData: userData,
+              session: session.data,
+            };
+          } else {
+            console.error("❌ Session created but user data missing");
+            return {
+              type: "error",
+              error: {
+                code: "SESSION_ERROR",
+                message: "Session created but user data is missing",
+              },
+            };
+          }
+        } else {
+          console.error(
+            "❌ Better Auth Google sign-in failed:",
+            authResult.error
+          );
+          return {
+            type: "error",
+            error: {
+              code: "AUTH_FAILED",
+              message: "Better Auth Google authentication failed",
+              details: authResult.error?.message || "Unknown error",
+            },
+          };
+        }
+      } catch (authError) {
+        console.error("❌ Better Auth Google integration error:", authError);
+        return {
+          type: "error",
+          error: {
+            code: "AUTH_ERROR",
+            message: "Failed to authenticate with server",
+            details:
+              authError instanceof Error
+                ? authError.message
+                : "Unknown auth error",
+          },
+        };
       }
-
-      await Linking.openURL(oauthUrl.toString());
-
-      // Return a pending state - the actual result will come via deep link
-      return {
-        type: "pending",
-        state: state,
-      };
     } catch (error: any) {
       console.error("Google auth error:", error);
       return {

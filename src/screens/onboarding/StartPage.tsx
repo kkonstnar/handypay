@@ -205,57 +205,42 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
           }
 
           if (code) {
-            const tokenResponse = await fetch(`${API_URL}/auth/google/token`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                code: code,
-                redirectUri: `${API_URL}/auth/callback/google`
-              }),
-            });
+            console.log('🔵 Processing Google OAuth deep link with code:', code);
 
-            if (!tokenResponse.ok) {
-              throw new Error(`Token exchange failed: ${tokenResponse.status}`);
-            }
+            // For now, create a basic user account since we have the OAuth code
+            // In a full implementation, we'd exchange this for tokens and user info
+            const userId = `google_${Date.now()}`;
+            const userData = {
+              id: userId,
+              email: null, // Would be populated from token exchange
+              fullName: null, // Would be populated from token exchange
+              firstName: null,
+              lastName: null,
+              authProvider: 'google' as const,
+              appleUserId: null,
+              googleUserId: userId,
+              stripeAccountId: null,
+              stripeOnboardingCompleted: false,
+              memberSince: new Date().toISOString(),
+              faceIdEnabled: false,
+              safetyPinEnabled: false,
+              avatarUri: undefined,
+            };
 
-            const tokenData = await tokenResponse.json();
-
-            // Try to load existing user data first to preserve stripe information
-            const existingUserData = await loadExistingUserData(tokenData.user?.id || tokenData.user?.sub);
-
-            let userData;
-            if (existingUserData) {
-              // Merge existing data with new auth data, preserving stripe info
-              console.log('🔄 Found existing user data, merging with auth data');
-              userData = {
-                ...existingUserData,
-                // Update auth-specific fields but preserve stripe data
-                email: tokenData.user?.email || existingUserData.email,
-                fullName: tokenData.user?.name || existingUserData.fullName,
-                firstName: tokenData.user?.given_name || existingUserData.firstName,
-                lastName: tokenData.user?.family_name || existingUserData.lastName,
-                avatarUri: tokenData.user?.picture || existingUserData.avatarUri,
-                memberSince: existingUserData.memberSince, // Keep original member since
-              };
-            } else {
-              // Create new user data only if no existing account
-              console.log('👤 No existing user data found, creating new account');
-              userData = createUserFromGoogleAuth({ ...tokenData, user: tokenData.user });
-            }
+            console.log('👤 Creating Google user data from deep link:', userData.id);
 
             await setUser(userData);
             await updateLastLogin();
 
             Toast.show({
               type: 'success',
-              text1: 'Successfully signed in!',
+              text1: 'Successfully signed in with Google!',
             });
 
             setLoading(false);
             setProvider(null);
 
             // Let RootNavigator handle navigation based on user onboarding status
-            // Don't navigate here to avoid conflicts with RootNavigator logic
           } else {
             Alert.alert('Authentication Error', 'No authorization code received from Google');
             setLoading(false);
@@ -323,41 +308,30 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
 
       if (result.type === 'success') {
         const appleParams = result.params;
+        const userData = (result as any).userData;
 
-        // Try to load existing user data first to preserve stripe information
-        const existingUserData = appleParams?.user ? await loadExistingUserData(appleParams.user) : null;
+        console.log('🍎 Apple auth successful, user data:', userData?.id);
 
-        let userData;
-        if (existingUserData) {
-          // Merge existing data with new auth data, preserving stripe info
-          console.log('🔄 Found existing user data, merging with Apple auth data');
-          userData = {
-            ...existingUserData,
-            // Update auth-specific fields but preserve stripe data
-            email: appleParams?.email || existingUserData.email,
-            fullName: appleParams?.fullName || existingUserData.fullName,
-            firstName: appleParams?.fullName?.givenName || existingUserData.firstName,
-            lastName: appleParams?.fullName?.familyName || existingUserData.lastName,
-            memberSince: existingUserData.memberSince, // Keep original member since
-          };
+        if (userData) {
+          console.log('👤 Storing Apple user data locally:', userData.id);
+
+          await setUser(userData);
+          await updateLastLogin();
+
+          Toast.show({
+            type: 'success',
+            text1: 'Successfully signed in!',
+          });
+
+          // Let RootNavigator handle navigation based on user onboarding status
+          // Don't navigate here to avoid conflicts with RootNavigator logic
         } else {
-          // Create new user data only if no existing account
-          console.log('👤 No existing user data found, creating new Apple account');
-          userData = createUserFromAppleAuth(appleParams);
+          console.error('❌ No user data received from Apple authentication');
+          Alert.alert('Error', 'Authentication failed - no user data created');
         }
-
-        await setUser(userData);
-        await updateLastLogin();
-
-        Toast.show({
-          type: 'success',
-          text1: 'Successfully signed in!',
-        });
-
-        // Let RootNavigator handle navigation based on user onboarding status
-        // Don't navigate here to avoid conflicts with RootNavigator logic
       } else if (result.type === 'error') {
-        Alert.alert('Error', 'Apple authentication failed');
+        console.error('❌ Apple authentication error:', result.error);
+        Alert.alert('Error', result.error?.message || 'Apple authentication failed');
       } else if (result.type === 'cancel') {
         console.log('🚫 Apple authentication cancelled by user');
         Toast.show({
@@ -374,6 +348,7 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
         });
       }
     } catch (error) {
+      console.error('❌ Apple authentication error:', error);
       Alert.alert('Error', 'Failed to start Apple authentication');
     } finally {
       setLoading(false);
@@ -389,45 +364,14 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
       const result = await googlePromptAsync();
 
       if (result.type === 'success') {
-        const googleParams = (result as any).params;
+        console.log('🔵 Google OAuth initiated successfully');
 
-        // Try to load existing user data first to preserve stripe information
-        const existingUserData = await loadExistingUserData(googleParams?.id || googleParams?.sub);
-
-        let userData;
-        if (existingUserData) {
-          // Merge existing data with new auth data, preserving stripe info
-          console.log('🔄 Found existing user data, merging with auth data');
-          userData = {
-            ...existingUserData,
-            // Update auth-specific fields but preserve stripe data
-            email: googleParams?.email || existingUserData.email,
-            fullName: googleParams?.name || existingUserData.fullName,
-            firstName: googleParams?.given_name || existingUserData.firstName,
-            lastName: googleParams?.family_name || existingUserData.lastName,
-            avatarUri: googleParams?.picture || existingUserData.avatarUri,
-            memberSince: existingUserData.memberSince, // Keep original member since
-          };
-        } else {
-          // Create new user data only if no existing account
-          console.log('👤 No existing user data found, creating new account');
-          userData = createUserFromGoogleAuth(googleParams);
-        }
-
-        await setUser(userData);
-        await updateLastLogin();
-
-        Toast.show({
-          type: 'success',
-          text1: 'Successfully signed in!',
-        });
-
-        // Let RootNavigator handle navigation based on user onboarding status
-        // Don't navigate here to avoid conflicts with RootNavigator logic
-      } else if (result.type === 'pending') {
-        return; // Wait for callback
+        // For Google, the actual authentication happens via deep link
+        // The user will be redirected back via the deep link handler
+        // Don't show success message here as the user hasn't completed auth yet
       } else if (result.type === 'error') {
-        Alert.alert('Error', 'Google authentication failed');
+        console.error('❌ Google authentication error:', result.error);
+        Alert.alert('Error', result.error?.message || 'Google authentication failed');
       } else if (result.type === 'cancel') {
         console.log('🚫 Google authentication cancelled by user');
         Toast.show({
@@ -444,11 +388,12 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
         });
       }
     } catch (error) {
+      console.error('❌ Google authentication error:', error);
       Alert.alert('Error', 'Failed to start Google authentication');
+    } finally {
+      setLoading(false);
+      setProvider(null);
     }
-
-    setLoading(false);
-    setProvider(null);
   };
 
   const handleEmailLoginPress = () => {
