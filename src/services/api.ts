@@ -1,7 +1,28 @@
 import { Transaction, Payout, Balance, ApiResponse } from "../types";
+import { createAuthClient } from "@better-auth/client";
 
 // API Base URL - points to our backend
 const API_BASE_URL = "https://handypay-backend.handypay.workers.dev";
+
+// Better Auth client setup
+export const authClient = createAuthClient({
+  baseURL: API_BASE_URL,
+  fetchOptions: {
+    onRequest: (context) => {
+      console.log("🌐 Auth request:", context.url);
+      return {
+        ...context,
+        headers: {
+          ...context.headers,
+        },
+      };
+    },
+    onResponse: (context) => {
+      console.log("✅ Auth response:", context.response.status);
+      return context;
+    },
+  },
+});
 
 /**
  * API Service for handling all backend API calls
@@ -31,57 +52,39 @@ export class ApiService {
         console.log(`🌐 API Request: ${options.method || "GET"} ${endpoint}`);
       }
 
-      // Include cookies for authentication (Better Auth uses cookies by default)
-      const requestOptions = {
-        ...options,
-        headers: {
-          "Content-Type": "application/json",
-          ...options.headers,
-        },
-        credentials: "include" as RequestCredentials, // Include cookies for auth
-      };
+      // Use Better Auth client for authenticated requests
+      try {
+        const data = await authClient.$fetch<T>(endpoint, {
+          method: options.method || "GET",
+          headers: {
+            "Content-Type": "application/json",
+            ...options.headers,
+          },
+          body: options.body,
+          ...options,
+        });
 
-      const response = await fetch(url, requestOptions);
+        // Only log success for important operations
+        if (
+          __DEV__ &&
+          (endpoint.includes("balance") || endpoint.includes("onboarding"))
+        ) {
+          console.log(`✅ API Success:`, endpoint);
+        }
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        console.error(
-          `❌ API Error ${response.status}:`,
-          data.error || data.message
-        );
+        return {
+          data: data as T,
+          success: true,
+          message: "Success",
+        };
+      } catch (fetchError: any) {
+        console.error(`❌ API Error:`, fetchError.message || fetchError);
         return {
           data: null as T,
           success: false,
-          error:
-            data.message || `HTTP ${response.status}: ${response.statusText}`,
+          error: fetchError.message || "Network error",
         };
       }
-
-      // Only log success for important operations
-      if (
-        __DEV__ &&
-        (endpoint.includes("balance") || endpoint.includes("onboarding"))
-      ) {
-        console.log(`✅ API Success:`, endpoint);
-      }
-
-      return {
-        data: data.data || data,
-        success: true,
-        message: data.message,
-      };
-    } catch (error) {
-      console.error(
-        `❌ API Network Error:`,
-        error instanceof Error ? error.message : "Network error"
-      );
-      return {
-        data: null as T,
-        success: false,
-        error: error instanceof Error ? error.message : "Network error",
-      };
-    }
   }
 
   /**
@@ -99,6 +102,64 @@ export class ApiService {
     }
 
     return this.apiRequest<Transaction[]>(`/api/transactions/${userId}`);
+  }
+
+  /**
+   * Get current user session
+   */
+  async getSession() {
+    try {
+      const session = await authClient.getSession();
+      return session;
+    } catch (error) {
+      console.error("❌ Failed to get session:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Sign in with Google OAuth
+   */
+  async signInWithGoogle() {
+    try {
+      const result = await authClient.signIn.social({
+        provider: "google",
+        callbackURL: "handypay://auth/callback",
+      });
+      return result;
+    } catch (error) {
+      console.error("❌ Google sign in failed:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Sign in with Apple OAuth
+   */
+  async signInWithApple() {
+    try {
+      const result = await authClient.signIn.social({
+        provider: "apple",
+        callbackURL: "handypay://auth/callback",
+      });
+      return result;
+    } catch (error) {
+      console.error("❌ Apple sign in failed:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Sign out current user
+   */
+  async signOut() {
+    try {
+      await authClient.signOut();
+      return { success: true };
+    } catch (error) {
+      console.error("❌ Sign out failed:", error);
+      return { success: false, error: error.message };
+    }
   }
 
   /**
