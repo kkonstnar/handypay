@@ -41,7 +41,7 @@ export class ApiService {
         console.log(`🌐 Making API request to: ${endpoint}`, {
           method: options.method || "GET",
           hasBody: !!options.body,
-          url: url
+          url: url,
         });
 
         const data = await fetch(url, {
@@ -58,7 +58,7 @@ export class ApiService {
         console.log(`📡 API Response status: ${data.status}`, {
           ok: data.ok,
           statusText: data.statusText,
-          url: data.url
+          url: data.url,
         });
 
         if (!data.ok) {
