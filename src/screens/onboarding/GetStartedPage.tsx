@@ -329,7 +329,9 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         if (isSuccess) {
           console.log('🎉 Stripe onboarding actually completed successfully!');
           // Onboarding is truly complete - proceed with success flow
-          captureStripeAccountData(accountId, 0, 5);
+          const url = new URL(event.url);
+          const accountIdFromUrl = url.searchParams.get('accountId');
+          captureStripeAccountData(accountIdFromUrl, 0, 5);
 
         } else if (isIncomplete) {
           console.log('⏳ Stripe onboarding incomplete - user exited or saved for later');
@@ -401,90 +403,6 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
           );
         }
 
-        // Temporarily disable aggressive polling to prevent multiple polling instances
-        /*
-        if (isSuccess) {
-          // Start aggressive polling to catch completion (webhook might be delayed)
-          console.log('🔄 Starting aggressive polling for completion status...');
-          const aggressivePolling = setInterval(() => {
-            checkOnboardingStatus();
-          }, 2000); // Check every 2 seconds for faster detection
-
-          // Stop aggressive polling after 30 seconds
-          setTimeout(() => {
-            clearInterval(aggressivePolling);
-            console.log('🛑 Stopped aggressive polling');
-          }, 30000);
-          */
-
-          // Capture the Stripe account data when user returns successfully
-          console.log('👤 Deep link handler - User context check:', {
-            hasUser: !!user,
-            userId: user?.id,
-            currentStripeAccountId
-          });
-
-          if (user) {
-            console.log('✅ User available in deep link handler, proceeding with account capture');
-
-            // Show immediate success feedback
-            setTimeout(() => {
-              Toast.show({
-                type: 'success',
-                text1: 'Onboarding completed!',
-                text2: 'Setting up your account...',
-              });
-            }, 300);
-
-            // Show loading state immediately
-            setLoading(true);
-
-            // Add a small delay to show the loading state before capturing data
-            setTimeout(() => {
-              console.log('🚀 Deep link handler: Starting account data capture...');
-              captureStripeAccountData(currentStripeAccountId || undefined, 0, 5);
-            }, 1000);
-          } else {
-            console.log('❌ No user context available in deep link handler');
-
-            // Fallback if no user data available - still navigate to success page
-            setTimeout(() => {
-              Toast.show({
-                type: 'warning',
-                text1: 'Onboarding completed!',
-                text2: 'Please restart the app to see your account status.',
-              });
-              console.log('🚀 Setting fallback navigation timeout to SuccessPage');
-              setTimeout(() => {
-                console.log('✅ Executing fallback navigation to SuccessPage');
-                navigation.replace('SuccessPage');
-              }, 2000);
-            }, 300);
-          }
-        } else if (isRefresh) {
-          // User clicked "Save for Later" on Stripe onboarding
-          console.log('💾 User saved onboarding for later - setting up continuation mode');
-
-          // Show success toast for saving progress
-          setTimeout(() => {
-            Toast.show({
-              type: 'success',
-              text1: 'Progress Saved',
-              text2: 'You can continue onboarding anytime.',
-            });
-
-            // Set a flag to indicate we're in continuation mode
-            // This would trigger UI changes (loading spinners, "Continue" button)
-            console.log('🔄 Would set isContinuingOnboarding = true here');
-
-            // Note: In a full implementation, we'd:
-            // 1. Set isContinuingOnboarding state
-            // 2. Show loading spinners on cards
-            // 3. Change button text to "Continue"
-            // 4. Allow resuming onboarding with existing account
-
-          }, 300);
-        }
       }
     };
 
