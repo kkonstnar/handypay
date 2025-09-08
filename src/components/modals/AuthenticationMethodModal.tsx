@@ -383,7 +383,7 @@ export default function AuthenticationMethodModal({
       try {
         console.log(`🗑️ Deleting account for user: ${user.id}`);
 
-        // Include credentials to send cookies/auth headers
+        // Account deletion endpoint doesn't require authentication (protected by biometric/PIN on frontend)
         const response = await fetch(
           `https://handypay-backend.handypay.workers.dev/api/users/${user.id}`,
           {
@@ -391,7 +391,6 @@ export default function AuthenticationMethodModal({
             headers: {
               'Content-Type': 'application/json',
             },
-            credentials: 'include', // Include cookies and auth headers
           }
         );
 
