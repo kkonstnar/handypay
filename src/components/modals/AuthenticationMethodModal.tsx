@@ -327,71 +327,51 @@ export default function AuthenticationMethodModal({
       safetyPinEnabled: user?.safetyPinEnabled
     });
 
-    if (user?.faceIdEnabled) {
-      console.log('👤 Face ID enabled, checking availability...');
-      const biometricInfo = await BiometricAuthService.getBiometricInfo();
-      console.log('📱 Biometric info:', {
-        available: biometricInfo.isAvailable,
-        enrolled: biometricInfo.isEnrolled,
-        type: biometricInfo.biometricType
-      });
-
-      if (biometricInfo.isAvailable && biometricInfo.isEnrolled) {
-        console.log('✅ Using Face ID for logout authentication');
-        // Face ID is enabled and available, use it
-        const authSuccess = await BiometricAuthService.authenticateWithPrompt(
-          'Authenticate to log out',
-          {
-            showErrorAlert: true,
-            allowRetry: true,
-            onSuccess: performLogout
-          }
-        );
-
-        // If authentication failed or was cancelled, don't proceed
-        if (!authSuccess) {
-          console.log('❌ Face ID authentication failed or cancelled during logout');
-          return;
-        }
-      } else {
-        // Face ID is enabled in user data but not available on device
-        // Fall through to safety PIN or direct action
-        console.log('⚠️ Face ID enabled but not available on device during logout');
-      }
-    }
-
-    // If Face ID is disabled OR not available, try Safety PIN
-    const biometricInfoForFallback = user?.faceIdEnabled ? await BiometricAuthService.getBiometricInfo() : null;
-    console.log('🔄 Safety PIN check:', {
-      safetyPinEnabled: user?.safetyPinEnabled,
-      faceIdEnabled: user?.faceIdEnabled,
-      biometricFallbackAvailable: biometricInfoForFallback?.isAvailable
+    // Get biometric info once and use consistently
+    const biometricInfo = user?.faceIdEnabled ? await BiometricAuthService.getBiometricInfo() : null;
+    console.log('📱 Biometric info:', {
+      available: biometricInfo?.isAvailable,
+      enrolled: biometricInfo?.isEnrolled,
+      type: biometricInfo?.biometricType
     });
 
-    if (user?.safetyPinEnabled && (!user?.faceIdEnabled || !biometricInfoForFallback?.isAvailable)) {
+    // Determine authentication method
+    const shouldUseFaceId = user?.faceIdEnabled && biometricInfo?.isAvailable && biometricInfo?.isEnrolled;
+    const shouldUseSafetyPin = user?.safetyPinEnabled && !shouldUseFaceId;
+
+    console.log('🎯 Authentication decision:', {
+      shouldUseFaceId,
+      shouldUseSafetyPin,
+      faceIdEnabled: user?.faceIdEnabled,
+      safetyPinEnabled: user?.safetyPinEnabled
+    });
+
+    if (shouldUseFaceId) {
+      console.log('✅ Using Face ID for logout authentication');
+      // Face ID is enabled and available, use it
+      const authSuccess = await BiometricAuthService.authenticateWithPrompt(
+        'Authenticate to log out',
+        {
+          showErrorAlert: true,
+          allowRetry: true,
+          onSuccess: performLogout
+        }
+      );
+
+      // If authentication failed or was cancelled, don't proceed
+      if (!authSuccess) {
+        console.log('❌ Face ID authentication failed or cancelled during logout');
+        return;
+      }
+    } else if (shouldUseSafetyPin) {
       console.log('🔐 Using Safety PIN for logout authentication');
       // Use Safety PIN authentication - delegate to parent component
       onClose(); // Close this modal first
       onLogoutWithAuth?.(); // Parent will handle PIN authentication and logout
-    } else if (!user?.faceIdEnabled && !user?.safetyPinEnabled) {
+    } else {
       console.log('🚪 No authentication required, proceeding directly');
       // No authentication required, proceed directly
       performLogout();
-    } else {
-      // Fallback: if we reach here, something went wrong with the logic
-      console.log('⚠️ Authentication fallback triggered during logout', {
-        faceIdEnabled: user?.faceIdEnabled,
-        safetyPinEnabled: user?.safetyPinEnabled,
-        biometricFallbackAvailable: biometricInfoForFallback?.isAvailable
-      });
-      if (user?.safetyPinEnabled) {
-        console.log('🔐 Fallback: Using Safety PIN');
-        onClose(); // Close this modal first
-        onLogoutWithAuth?.(); // Parent will handle PIN authentication and logout
-      } else {
-        console.log('🚪 Fallback: No authentication, proceeding directly');
-        performLogout(); // Last resort
-      }
     }
   };
 
