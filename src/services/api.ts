@@ -85,6 +85,17 @@ export class ApiService {
           error: fetchError.message || "Network error",
         };
       }
+    } catch (error) {
+      console.error(
+        `❌ API Network Error:`,
+        error instanceof Error ? error.message : "Network error"
+      );
+      return {
+        data: null as T,
+        success: false,
+        error: error instanceof Error ? error.message : "Network error",
+      };
+    }
   }
 
   /**
