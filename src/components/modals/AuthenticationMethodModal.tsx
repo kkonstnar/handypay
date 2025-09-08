@@ -280,10 +280,12 @@ export default function AuthenticationMethodModal({
   };
 
   const handleLogout = async () => {
+    console.log('🚪 Starting logout process...');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
+
     // Function to perform actual logout after authentication
     const performLogout = () => {
+      console.log('⚠️ Showing logout confirmation alert');
       Alert.alert(
         'Log out',
         'Are you sure you want to log out of your HandyPay account?',
@@ -296,6 +298,7 @@ export default function AuthenticationMethodModal({
             text: 'Log out',
             style: 'destructive',
             onPress: async () => {
+              console.log('✅ User confirmed logout, performing logout...');
               try {
                 await clearUser();
                 onClose();
@@ -319,10 +322,22 @@ export default function AuthenticationMethodModal({
     };
 
     // Require authentication before logout
+    console.log('🔐 Logout auth check:', {
+      faceIdEnabled: user?.faceIdEnabled,
+      safetyPinEnabled: user?.safetyPinEnabled
+    });
+
     if (user?.faceIdEnabled) {
+      console.log('👤 Face ID enabled, checking availability...');
       const biometricInfo = await BiometricAuthService.getBiometricInfo();
+      console.log('📱 Biometric info:', {
+        available: biometricInfo.isAvailable,
+        enrolled: biometricInfo.isEnrolled,
+        type: biometricInfo.biometricType
+      });
 
       if (biometricInfo.isAvailable && biometricInfo.isEnrolled) {
+        console.log('✅ Using Face ID for logout authentication');
         // Face ID is enabled and available, use it
         const authSuccess = await BiometricAuthService.authenticateWithPrompt(
           'Authenticate to log out',
@@ -347,20 +362,34 @@ export default function AuthenticationMethodModal({
 
     // If Face ID is disabled OR not available, try Safety PIN
     const biometricInfoForFallback = user?.faceIdEnabled ? await BiometricAuthService.getBiometricInfo() : null;
+    console.log('🔄 Safety PIN check:', {
+      safetyPinEnabled: user?.safetyPinEnabled,
+      faceIdEnabled: user?.faceIdEnabled,
+      biometricFallbackAvailable: biometricInfoForFallback?.isAvailable
+    });
+
     if (user?.safetyPinEnabled && (!user?.faceIdEnabled || !biometricInfoForFallback?.isAvailable)) {
+      console.log('🔐 Using Safety PIN for logout authentication');
       // Use Safety PIN authentication - delegate to parent component
       onClose(); // Close this modal first
       onLogoutWithAuth?.(); // Parent will handle PIN authentication and logout
     } else if (!user?.faceIdEnabled && !user?.safetyPinEnabled) {
+      console.log('🚪 No authentication required, proceeding directly');
       // No authentication required, proceed directly
       performLogout();
     } else {
       // Fallback: if we reach here, something went wrong with the logic
-      console.log('⚠️ Authentication fallback triggered during logout');
+      console.log('⚠️ Authentication fallback triggered during logout', {
+        faceIdEnabled: user?.faceIdEnabled,
+        safetyPinEnabled: user?.safetyPinEnabled,
+        biometricFallbackAvailable: biometricInfoForFallback?.isAvailable
+      });
       if (user?.safetyPinEnabled) {
+        console.log('🔐 Fallback: Using Safety PIN');
         onClose(); // Close this modal first
         onLogoutWithAuth?.(); // Parent will handle PIN authentication and logout
       } else {
+        console.log('🚪 Fallback: No authentication, proceeding directly');
         performLogout(); // Last resort
       }
     }
