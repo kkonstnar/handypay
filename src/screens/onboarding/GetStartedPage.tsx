@@ -25,124 +25,6 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
   const [hasIncompleteOnboarding, setHasIncompleteOnboarding] = useState(false);
   const [onboardingStatusCheckInterval, setOnboardingStatusCheckInterval] = useState<NodeJS.Timeout | null>(null);
 
-  // Manual test function to trigger webhook logic
-  const testWebhookUpdate = async () => {
-    try {
-      // Only log in development mode
-      if (__DEV__) {
-        console.log('🧪 Testing webhook update manually...');
-        console.log('📊 Using accountId:', currentStripeAccountId, 'userId:', user?.id);
-      }
-
-      if (!currentStripeAccountId || !user?.id) {
-        // Only log in development mode
-        if (__DEV__) {
-          console.log('⚠️ Test webhook attempted without required data:', {
-            hasAccountId: !!currentStripeAccountId,
-            hasUserId: !!user?.id,
-            userId: user?.id
-          });
-        }
-
-        Toast.show({
-          type: 'error',
-          text1: 'Test Unavailable',
-          text2: 'Please start the onboarding process first to test webhooks',
-        });
-        return;
-      }
-
-      const response = await fetch('https://handypay-backend.handypay.workers.dev/api/stripe/test-account-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accountId: currentStripeAccountId,
-          userId: user.id
-        })
-      });
-
-      console.log('📡 Response status:', response.status);
-
-      if (response.status === 404) {
-        Toast.show({
-          type: 'error',
-          text1: 'Backend not updated yet',
-          text2: 'Test endpoint not found - redeploy backend',
-        });
-        return;
-      }
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Test webhook failed with status:', response.status, errorText);
-        Toast.show({
-          type: 'error',
-          text1: 'Test Failed',
-          text2: `HTTP ${response.status}: ${errorText}`,
-        });
-        return;
-      }
-
-      const result = await response.json();
-      console.log('🧪 Test webhook result:', result);
-
-      if (result.success) {
-        Toast.show({
-          type: 'success',
-          text1: 'Webhook test completed!',
-          text2: 'Account marked as complete. Navigating...',
-        });
-
-        // Force refresh user context and navigate
-        setTimeout(async () => {
-          try {
-            console.log('🔄 Updating user context...');
-
-            // Update local user context to reflect completion
-            // SECURITY: DO NOT set stripeOnboardingCompleted locally
-            // Only Stripe webhooks should update completion status in backend
-            console.log('⚠️ Onboarding completion will be updated via Stripe webhooks only');
-
-            // Update stripeAccountId if we have it
-            if (currentStripeAccountId) {
-              const { setUser } = useUser();
-              if (user) {
-                const updatedUser = {
-                  ...user,
-                  stripeAccountId: currentStripeAccountId
-                };
-                await setUser(updatedUser);
-              }
-            }
-
-            console.log('✅ User context updated locally');
-
-            // Navigate to success page
-            console.log('✅ Executing navigation.replace(SuccessPage) from test webhook');
-            navigation.replace('SuccessPage');
-          } catch (error) {
-            console.error('❌ Error updating user context:', error);
-            // Still navigate even if update fails
-            console.log('✅ Executing fallback navigation.replace(SuccessPage) from test webhook error');
-            navigation.replace('SuccessPage');
-          }
-        }, 1000);
-      } else {
-        Toast.show({
-          type: 'error',
-          text1: 'Webhook test failed',
-          text2: result.error || 'Unknown error',
-        });
-      }
-    } catch (error) {
-      console.error('❌ Error testing webhook:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Test failed',
-        text2: error instanceof Error ? error.message : 'Network error',
-      });
-    }
-  };
 
   // Function to start polling for onboarding status
   const startOnboardingStatusCheck = () => {
@@ -180,8 +62,8 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
 
     Toast.show({
       type: 'info',
-      text1: 'Onboarding cancelled',
-      text2: 'You can restart the process anytime.',
+      text1: 'Process cancelled',
+      text2: 'You can try again anytime'
     });
   };
 
@@ -304,11 +186,12 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
 
       // Check if this is a Stripe onboarding callback
       if (event.url.includes('stripe') || event.url.includes('onboarding') ||
-          event.url.startsWith('handypay://stripe/')) {
+          event.url.startsWith('handypay://stripe/') ||
+          event.url.includes('handypay-backend.handypay.workers.dev/stripe/')) {
         console.log('Stripe onboarding callback detected:', event.url);
 
         // Determine the type of callback
-        const isSuccess = event.url.includes('/success');
+        const isSuccess = event.url.includes('/return') || event.url.includes('/success');
         const isIncomplete = event.url.includes('/incomplete') || event.url.includes('/complete');
         const isRefresh = event.url.includes('/refresh');
         const isError = event.url.includes('/error');
@@ -320,6 +203,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
           isRefresh,
           isError,
           containsSuccess: event.url.includes('/success'),
+          containsReturn: event.url.includes('/return'),
           containsComplete: event.url.includes('/complete'),
           containsIncomplete: event.url.includes('/incomplete'),
           containsRefresh: event.url.includes('/refresh'),
@@ -330,7 +214,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
           console.log('🎉 Stripe onboarding actually completed successfully!');
           // Onboarding is truly complete - proceed with success flow
           const url = new URL(event.url);
-          const accountIdFromUrl = url.searchParams.get('accountId');
+          const accountIdFromUrl = url.searchParams.get('accountId') || undefined;
           captureStripeAccountData(accountIdFromUrl, 0, 5);
 
         } else if (isIncomplete) {
@@ -724,8 +608,8 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         setTimeout(() => {
           Toast.show({
             type: 'success',
-            text1: 'Onboarding completed!',
-            text2: 'Your account is ready to accept payments.',
+            text1: 'Setup completed!',
+            text2: 'Your account is ready to accept payments'
           });
           console.log('🚀 Setting navigation timeout to SuccessPage (charges enabled)');
           setTimeout(() => {
@@ -739,7 +623,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
           Toast.show({
             type: 'success',
             text1: 'Details submitted!',
-            text2: 'Stripe is reviewing your account.',
+            text2: 'Stripe is reviewing your account'
           });
           console.log('🚀 Setting navigation timeout to SuccessPage (details submitted)');
           setTimeout(() => {
@@ -752,8 +636,8 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         setTimeout(() => {
           Toast.show({
             type: 'info',
-            text1: 'Account Connected',
-            text2: 'Complete your Stripe setup to start accepting payments.',
+            text1: 'Account connected',
+            text2: 'Complete your Stripe setup to start accepting payments'
           });
           console.log('🚀 Setting navigation timeout to SuccessPage (account connected)');
           setTimeout(() => {
@@ -786,8 +670,8 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
       setTimeout(() => {
         Toast.show({
           type: 'success',
-          text1: 'Onboarding completed!',
-          text2: 'Account data will be synced when you restart the app.',
+          text1: 'Setup completed!',
+          text2: 'Account data will be synced when you restart the app'
         });
         setTimeout(() => navigation.replace('SuccessPage'), 1500);
       }, 300);
@@ -912,8 +796,8 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         firstName: firstName,
         lastName: lastName,
         email: user.email || 'user@handypay.com',
-        refresh_url: 'https://handypay-backend.handypay.workers.dev/stripe/refresh',
-        return_url: 'https://handypay-backend.handypay.workers.dev/stripe/return',
+      refresh_url: 'https://handypay-backend.handypay.workers.dev/stripe/refresh',
+      return_url: 'https://handypay-backend.handypay.workers.dev/stripe/return',
         // Include existing account ID if continuing onboarding
         ...(currentStripeAccountId && { stripeAccountId: currentStripeAccountId }),
       };
@@ -1066,18 +950,6 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         >
           Skip for now
         </Button>
-        {__DEV__ && currentStripeAccountId && user?.id && (
-          <Button
-            variant="ghost"
-            style={[styles.secondaryBtn, { marginTop: 10, backgroundColor: '#f0f0f0' }]}
-            onPress={testWebhookUpdate}
-            disabled={loading}
-          >
-            <Text style={[styles.primaryBtnText, { color: '#666' }]}>
-              🧪 Test Webhook
-            </Text>
-          </Button>
-        )}
       </View>
     </View>
   );

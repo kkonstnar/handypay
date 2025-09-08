@@ -83,7 +83,18 @@ class StripeOnboardingManager {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to create Stripe account link");
+        const errorMessage =
+          data.error ||
+          data.message ||
+          `HTTP ${response.status}: ${response.statusText}`;
+        console.error("❌ Backend error response:", {
+          status: response.status,
+          statusText: response.statusText,
+          error: data.error,
+          message: data.message,
+          fullResponse: data,
+        });
+        throw new Error(errorMessage);
       }
 
       console.log("✅ Stripe onboarding URL preloaded:", data.url);
@@ -238,7 +249,18 @@ class StripeOnboardingManager {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to create Stripe account link");
+        const errorMessage =
+          data.error ||
+          data.message ||
+          `HTTP ${response.status}: ${response.statusText}`;
+        console.error("❌ Backend error response:", {
+          status: response.status,
+          statusText: response.statusText,
+          error: data.error,
+          message: data.message,
+          fullResponse: data,
+        });
+        throw new Error(errorMessage);
       }
 
       console.log(`✅ Stripe account created:`, {

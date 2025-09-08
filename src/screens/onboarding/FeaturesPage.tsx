@@ -20,7 +20,15 @@ export default function FeaturesPage({ navigation }: FeaturesPageProps): React.R
     if (user) {
       console.log('🎯 User interested in signing up - starting Stripe onboarding preload');
       stripeOnboardingManager.startPreloading(user).catch((error) => {
-        console.error('Failed to preload Stripe onboarding:', error);
+        console.error('❌ Error preloading Stripe onboarding:', error);
+        console.error('❌ Error details:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
+
+        // Don't block navigation if preloading fails
+        // The user can still proceed and onboarding will work without preload
       });
     }
 
