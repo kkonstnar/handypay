@@ -72,8 +72,25 @@ export const useAppleAuth = () => {
           callbackURL: "handypay://auth/callback",
         });
 
-        // For now, just return success since authResult doesn't have the expected structure
+        // Create user data from the credential
         console.log("🔐 Apple sign-in initiated, result:", authResult);
+
+        const userData = {
+          id: credential.user,
+          email: credential.email || null,
+          fullName: credential.fullName ? `${credential.fullName.givenName || ''} ${credential.fullName.familyName || ''}`.trim() : null,
+          firstName: credential.fullName?.givenName || null,
+          lastName: credential.fullName?.familyName || null,
+          authProvider: "apple" as const,
+          appleUserId: credential.user,
+          googleUserId: null,
+          stripeAccountId: null,
+          stripeOnboardingCompleted: false,
+          memberSince: new Date().toISOString(),
+          faceIdEnabled: false,
+          safetyPinEnabled: false,
+          avatarUri: undefined,
+        };
 
         return {
           type: "success",
@@ -143,27 +160,55 @@ export const useGoogleAuth = () => {
     try {
       console.log("Starting Google OAuth flow with Better Auth...");
 
-      // Use Better Auth's Google sign-in to create a proper server session
+      // Use AuthSession to open Google OAuth flow
       try {
-        console.log(
-          "🔐 Creating authenticated session with Better Auth for Google..."
-        );
-        console.log("🔍 authClient:", authClient);
-        console.log("🔍 authClient.signIn:", authClient.signIn);
+        console.log("🔐 Starting Google OAuth flow...");
 
-        const authResult = await authClient.signIn.social({
-          provider: "google",
-          callbackURL: "handypay://auth/callback",
+        // Open Google OAuth URL in browser
+        const result = await AuthSession.startAsync({
+          authUrl: GOOGLE_OAUTH_URL,
+          returnUrl: "handypay://auth/callback",
         });
 
-        // For now, just return success since authResult doesn't have the expected structure
-        console.log("🔐 Google sign-in initiated, result:", authResult);
+        console.log("🔐 Google OAuth result:", result);
 
-        return {
-          type: "success",
-          params: {},
-          userData: null, // Will be set by deep link handler
-        };
+        if (result.type === "success" && result.params) {
+          console.log("✅ Google OAuth successful, params:", result.params);
+
+          // Create user data from OAuth result (this will be enhanced by deep link handler)
+          const userData = {
+            id: result.params.userId || result.params.sub || "google-user",
+            email: result.params.email || null,
+            fullName: result.params.name || null,
+            firstName: result.params.given_name || null,
+            lastName: result.params.family_name || null,
+            authProvider: "google" as const,
+            appleUserId: null,
+            googleUserId: result.params.userId || result.params.sub || "google-user",
+            stripeAccountId: null,
+            stripeOnboardingCompleted: false,
+            memberSince: new Date().toISOString(),
+            faceIdEnabled: false,
+            safetyPinEnabled: false,
+            avatarUri: result.params.picture || undefined,
+          };
+
+          return {
+            type: "success",
+            params: result.params,
+            userData: userData,
+          };
+        } else {
+          console.log("⚠️ Google OAuth cancelled or failed:", result.type);
+          return {
+            type: result.type === "cancel" ? "cancel" : "error",
+            error: {
+              code: "OAUTH_CANCELLED",
+              message: "Google OAuth was cancelled or failed",
+              details: result.type,
+            },
+          };
+        }
       } catch (authError) {
         console.error("❌ Google auth error:", authError);
         return {
