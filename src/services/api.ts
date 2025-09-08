@@ -31,13 +31,17 @@ export class ApiService {
         console.log(`🌐 API Request: ${options.method || "GET"} ${endpoint}`);
       }
 
-      const response = await fetch(url, {
+      // Include cookies for authentication (Better Auth uses cookies by default)
+      const requestOptions = {
+        ...options,
         headers: {
           "Content-Type": "application/json",
           ...options.headers,
         },
-        ...options,
-      });
+        credentials: "include" as RequestCredentials, // Include cookies for auth
+      };
+
+      const response = await fetch(url, requestOptions);
 
       const data = await response.json();
 
