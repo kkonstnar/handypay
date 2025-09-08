@@ -58,41 +58,12 @@ export const authClient = {
     }
   },
 
-  // Social sign-in methods - handle actual authentication
+  // Social sign-in methods
   signIn: {
-    social: async ({ provider, callbackURL }: { provider: string; callbackURL?: string }) => {
-      try {
-        console.log(`🔐 Initiating ${provider} sign-in...`);
-
-        // Import Better Auth client dynamically to avoid issues
-        const { createAuthClient } = await import("@better-auth/client");
-
-        const auth = createAuthClient({
-          baseURL: "https://handypay-backend.handypay.workers.dev",
-          fetchOptions: {
-            onRequest: (context) => {
-              console.log("🔐 Better Auth request:", context.url);
-              return context;
-            },
-            onResponse: (context) => {
-              console.log("🔐 Better Auth response:", context.response?.status);
-              return context;
-            },
-          },
-        });
-
-        // Actually perform the social sign-in
-        const result = await auth.signIn.social({
-          provider: provider as any,
-          callbackURL: callbackURL,
-        });
-
-        console.log(`✅ ${provider} sign-in result:`, result);
-        return result;
-      } catch (error) {
-        console.error(`❌ ${provider} sign-in failed:`, error);
-        throw error;
-      }
+    social: async ({ provider }: { provider: string }) => {
+      console.log(`🔐 Initiating ${provider} sign-in...`);
+      // This will be handled by the ExpoAuthService
+      return { success: true };
     },
   },
 

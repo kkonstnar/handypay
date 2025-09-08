@@ -63,6 +63,8 @@ export const useAppleAuth = () => {
       // Create authenticated session with Better Auth
       try {
         console.log("🔐 Creating authenticated session with Better Auth...");
+        console.log("🔍 authClient:", authClient);
+        console.log("🔍 authClient.signIn:", authClient.signIn);
 
         // Use Better Auth's Apple sign-in to create a proper server session
         const authResult = await authClient.signIn.social({
@@ -201,6 +203,8 @@ export const useGoogleAuth = () => {
         console.log(
           "🔐 Creating authenticated session with Better Auth for Google..."
         );
+        console.log("🔍 authClient:", authClient);
+        console.log("🔍 authClient.signIn:", authClient.signIn);
 
         const authResult = await authClient.signIn.social({
           provider: "google",
