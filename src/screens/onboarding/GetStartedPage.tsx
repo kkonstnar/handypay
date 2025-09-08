@@ -308,24 +308,102 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         console.log('Stripe onboarding callback detected:', event.url);
 
         // Determine the type of callback
-        const isSuccess = event.url.includes('/success') || event.url.includes('onboarding') || event.url.includes('/complete');
+        const isSuccess = event.url.includes('/success');
+        const isIncomplete = event.url.includes('/incomplete') || event.url.includes('/complete');
         const isRefresh = event.url.includes('/refresh');
+        const isError = event.url.includes('/error');
 
         console.log('🔍 Deep link analysis:', {
           url: event.url,
           isSuccess,
+          isIncomplete,
           isRefresh,
+          isError,
           containsSuccess: event.url.includes('/success'),
-          containsOnboarding: event.url.includes('onboarding'),
           containsComplete: event.url.includes('/complete'),
-          containsRefresh: event.url.includes('/refresh')
+          containsIncomplete: event.url.includes('/incomplete'),
+          containsRefresh: event.url.includes('/refresh'),
+          containsError: event.url.includes('/error')
         });
 
         if (isSuccess) {
-          console.log('🎉 Stripe onboarding completed, capturing account data...');
+          console.log('🎉 Stripe onboarding actually completed successfully!');
+          // Onboarding is truly complete - proceed with success flow
+          captureStripeAccountData(accountId, 0, 5);
 
-          // Temporarily disable aggressive polling to prevent multiple polling instances
-          /*
+        } else if (isIncomplete) {
+          console.log('⏳ Stripe onboarding incomplete - user exited or saved for later');
+
+          // Extract account ID from URL if available
+          const url = new URL(event.url);
+          const accountIdFromUrl = url.searchParams.get('accountId');
+
+          if (accountIdFromUrl) {
+            console.log('📋 Account ID from incomplete redirect:', accountIdFromUrl);
+            // Update state to show "Continue Onboarding" button
+            setCurrentStripeAccountId(accountIdFromUrl);
+            setHasIncompleteOnboarding(true);
+
+            // Show a message to the user
+            setTimeout(() => {
+              Alert.alert(
+                'Onboarding Incomplete',
+                'It looks like you didn\'t complete the Stripe onboarding process. You can continue where you left off anytime.',
+                [{ text: 'OK' }]
+              );
+            }, 1000);
+          } else {
+            console.log('⚠️ No account ID in incomplete redirect');
+          }
+
+        } else if (isError) {
+          console.log('❌ Stripe onboarding error');
+
+          // Extract error from URL
+          const url = new URL(event.url);
+          const errorParam = url.searchParams.get('error');
+
+          Alert.alert(
+            'Onboarding Error',
+            `There was an error with Stripe onboarding: ${errorParam || 'Unknown error'}`,
+            [{ text: 'OK' }]
+          );
+
+        } else if (isRefresh) {
+          console.log('🔄 Stripe onboarding refresh requested');
+
+          // Extract account ID from URL if available
+          const url = new URL(event.url);
+          const accountIdFromUrl = url.searchParams.get('accountId');
+
+          if (accountIdFromUrl) {
+            console.log('📋 Account ID from refresh redirect:', accountIdFromUrl);
+            setCurrentStripeAccountId(accountIdFromUrl);
+            setHasIncompleteOnboarding(true);
+          }
+
+          // User wants to restart onboarding - they can click the button again
+          setTimeout(() => {
+            Alert.alert(
+              'Restart Onboarding',
+              'You can restart the Stripe onboarding process anytime.',
+              [{ text: 'OK' }]
+            );
+          }, 1000);
+
+        } else {
+          console.log('❓ Unknown Stripe deep link type');
+          // Handle unknown deep link type
+          Alert.alert(
+            'Unknown Status',
+            'Received an unknown status from Stripe onboarding.',
+            [{ text: 'OK' }]
+          );
+        }
+
+        // Temporarily disable aggressive polling to prevent multiple polling instances
+        /*
+        if (isSuccess) {
           // Start aggressive polling to catch completion (webhook might be delayed)
           console.log('🔄 Starting aggressive polling for completion status...');
           const aggressivePolling = setInterval(() => {
