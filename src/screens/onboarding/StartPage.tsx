@@ -506,7 +506,7 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
             disabled={loading}
           >
             <Text style={[styles.emailLinkText, loading && styles.disabledText]}>
-              Continue with Email (No OAuth Setup Required)
+              Continue with Email 
             </Text>
           </TouchableOpacity>
 
