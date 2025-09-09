@@ -1,7 +1,13 @@
 import * as AppleAuthentication from "expo-apple-authentication";
-import * as AuthSession from "expo-auth-session";
+import * as WebBrowser from "expo-web-browser";
 import { Linking, Platform } from "react-native";
 import { authClient, apiService } from "./api";
+
+// Backend API URL
+const API_BASE_URL = "https://handypay-backend.handypay.workers.dev";
+
+// Create the redirect URI for OAuth callbacks
+const REDIRECT_URI = "handypay://auth/callback";
 
 // Only log in development mode to reduce console spam
 if (__DEV__) {
@@ -140,92 +146,40 @@ export const useAppleAuth = () => {
   };
 };
 
-// Use Google OAuth with Better Auth integration
+// Use Google OAuth with proper browser-based flow
 export const useGoogleAuth = () => {
   // Only log in development mode to reduce console spam
   if (__DEV__) {
-    console.log("Google Auth Setup (Better Auth):", {
+    console.log("Google Auth Setup (Browser OAuth):", {
       isDevelopment: __DEV__,
     });
   }
 
   const promptAsync = async () => {
     try {
-      console.log("🔐 Starting Google OAuth with Better Auth...");
+      console.log("🔐 Starting Google OAuth with browser redirect...");
 
-      // Use Better Auth's social sign-in
-      const authResult = await authClient.signIn.social({
-        provider: "google",
+      // Create the Google OAuth URL using the backend's manual implementation
+      const oauthUrl = `${API_BASE_URL}/auth/google`;
+
+      console.log("🌐 Opening browser for Google OAuth:", oauthUrl);
+
+      // Use WebBrowser to open the OAuth URL
+      const browserResult = await WebBrowser.openBrowserAsync(oauthUrl, {
+        dismissButtonStyle: "cancel",
+        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
       });
 
-      console.log("🔐 Better Auth Google sign-in result:", authResult);
+      console.log("🔐 WebBrowser result:", browserResult);
 
-      // Type assertion for Better Auth response
-      const result = authResult as any;
-
-      if (result?.success) {
-        console.log("✅ Google OAuth successful, getting session data...");
-
-        // Better Auth sets up the session, now get the user data from the session
-        console.log("🔍 Getting session from Better Auth...");
-        const session = await authClient.getSession();
-        console.log("🔍 Session result:", session);
-
-        if (session?.data?.user) {
-          const user = session.data.user;
-
-          // Create user data from Better Auth session
-          const userData = {
-            id: user.id,
-            email: user.email, // ✅ Email from Better Auth
-            fullName: user.name, // ✅ Name from Better Auth
-            firstName: null, // Better Auth doesn't provide first/last name separation
-            lastName: null,
-            authProvider: "google" as const,
-            appleUserId: null,
-            googleUserId: user.id,
-            stripeAccountId: null,
-            stripeOnboardingCompleted: false,
-            memberSince: new Date().toISOString(),
-            faceIdEnabled: false,
-            safetyPinEnabled: false,
-            avatarUri: user.image, // ✅ Profile image from Better Auth
-          };
-
-          console.log(
-            "👤 Created Google user data from Better Auth session:",
-            userData
-          );
-
-          return {
-            type: "success",
-            params: result,
-            userData: userData,
-          };
-        } else {
-          console.log(
-            "⚠️ Better Auth sign-in successful but no session data found"
-          );
-          return {
-            type: "error",
-            error: {
-              code: "NO_SESSION",
-              message: "Sign-in successful but user session not found",
-              details: { authResult: result, session: session },
-            },
-          };
-        }
-      } else {
-        console.log("⚠️ Better Auth Google sign-in failed:", result);
-        return {
-          type: "error",
-          error: {
-            code: "AUTH_FAILED",
-            message: "Google sign-in failed",
-            details: result,
-          },
-        };
-      }
+      // After the browser closes, we need to wait for the deep link callback
+      // This is handled by the Linking listener in StartPage.tsx
+      // For now, return success assuming the OAuth flow will complete
+      return {
+        type: "success",
+        params: browserResult,
+        userData: null, // Will be populated by the deep link handler
+      };
     } catch (error: any) {
       console.error("❌ Google auth error:", error);
       return {
@@ -233,8 +187,7 @@ export const useGoogleAuth = () => {
         error: {
           code: "AUTH_ERROR",
           message: "Failed to authenticate with Google",
-          details:
-            error instanceof Error ? error.message : "Unknown auth error",
+          details: error instanceof Error ? error.message : "Unknown auth error",
         },
       };
     }

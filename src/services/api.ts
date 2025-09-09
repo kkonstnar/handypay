@@ -69,10 +69,26 @@ export const authClient = {
 
   // Fetch with authentication
   $fetch: async (url: string, options: RequestInit = {}) => {
-    const headers: Record<string, string> = {
+    const headers = new Headers({
       "Content-Type": "application/json",
-      ...options.headers,
-    };
+    });
+
+    // Add any additional headers from options
+    if (options.headers) {
+      if (options.headers instanceof Headers) {
+        options.headers.forEach((value, key) => {
+          headers.set(key, value);
+        });
+      } else if (Array.isArray(options.headers)) {
+        options.headers.forEach(([key, value]) => {
+          headers.set(key, value);
+        });
+      } else {
+        Object.entries(options.headers).forEach(([key, value]) => {
+          headers.set(key, value);
+        });
+      }
+    }
 
     return fetch(url, {
       ...options,
@@ -119,14 +135,18 @@ export class ApiService {
         });
 
         // Use Better Auth client's fetch method which handles authentication automatically
-        const headers: Record<string, string> = {
+        const requestHeaders: Record<string, string> = {
           "Content-Type": "application/json",
-          ...options.headers,
         };
+
+        // Add any additional headers from options
+        if (options.headers) {
+          Object.assign(requestHeaders, options.headers);
+        }
 
         const data = await authClient.$fetch(url, {
           method: options.method || "GET",
-          headers,
+          headers: requestHeaders,
           body: options.body,
           ...options,
         });
