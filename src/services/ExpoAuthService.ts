@@ -165,10 +165,14 @@ export const useGoogleAuth = () => {
       console.log("🌐 Opening browser for Google OAuth:", oauthUrl);
 
       // Use WebBrowser with auth session for proper OAuth flow
-      const authResult = await WebBrowser.openAuthSessionAsync(oauthUrl, REDIRECT_URI, {
-        dismissButtonStyle: "cancel",
-        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
-      });
+      const authResult = await WebBrowser.openAuthSessionAsync(
+        oauthUrl,
+        REDIRECT_URI,
+        {
+          dismissButtonStyle: "cancel",
+          presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
+        }
+      );
 
       console.log("🔐 AuthSession result:", authResult);
 
