@@ -159,8 +159,8 @@ export const useGoogleAuth = () => {
     try {
       console.log("🔐 Starting Google OAuth with browser redirect...");
 
-      // Create the Google OAuth URL using the backend's manual implementation
-      const oauthUrl = `${API_BASE_URL}/auth/google`;
+      // Create the Google OAuth URL using Better Auth's built-in social provider
+      const oauthUrl = `${API_BASE_URL}/api/auth/sign-in/google`;
 
       console.log("🌐 Opening browser for Google OAuth:", oauthUrl);
 
