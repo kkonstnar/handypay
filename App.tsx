@@ -13,6 +13,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import CustomSplashScreen from './src/components/SplashScreen';
 import Toast from 'react-native-toast-message';
 import toastConfig from './src/components/ui/ToastConfig';
+import { Linking } from 'react-native';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -29,6 +30,39 @@ function AppContent(): React.ReactElement {
   const handleSplashFinish = useCallback(() => {
     // Always finish splash animation immediately, but only transition when user data is ready
     setShowSplash(false);
+  }, []);
+
+  // Global deep link handler for debugging
+  useEffect(() => {
+    console.log('🌐 Setting up global deep link handler');
+
+    const handleGlobalDeepLink = (event: { url: string }) => {
+      console.log('🌐 GLOBAL DEEP LINK RECEIVED:', event.url, 'Timestamp:', Date.now());
+
+      // Check if this is a Google OAuth callback
+      if (event.url.includes('auth/callback') || event.url.includes('code=')) {
+        console.log('🌐 GLOBAL: Detected OAuth callback URL:', event.url);
+        // The individual screen handlers should process this
+      }
+    };
+
+    const subscription = Linking.addEventListener('url', handleGlobalDeepLink);
+
+    // Check for initial URL
+    Linking.getInitialURL().then((initialUrl) => {
+      console.log('🌐 Global initial URL check:', initialUrl);
+      if (initialUrl) {
+        console.log('🌐 Processing global initial URL:', initialUrl);
+        handleGlobalDeepLink({ url: initialUrl });
+      }
+    }).catch((error) => {
+      console.error('🌐 Error getting global initial URL:', error);
+    });
+
+    return () => {
+      console.log('🌐 Removing global deep link handler');
+      subscription?.remove();
+    };
   }, []);
 
   // Wait for both fonts and user data to be ready before finishing splash

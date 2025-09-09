@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Alert, ActivityIndicator, Linking, TouchableOpacity, AppState } from 'react-native';
+import { View, Text, StyleSheet, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 import ArrowSvg from '../../../assets/arrow.svg';
 import UserScanSvg from '../../../assets/user-scan.svg';
 import BankSvg from '../../../assets/bank.svg';
@@ -10,9 +11,60 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/RootNavigator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUser } from '../../contexts/UserContext';
-import { SupabaseUserService } from '../../services/SupabaseService';
 import { stripeOnboardingManager } from '../../services/StripeOnboardingService';
 import Toast from 'react-native-toast-message';
+
+// Helper functions for Stripe onboarding
+const fetchUserAccount = async (userId: string) => {
+  const response = await fetch(`https://handypay-backend.handypay.workers.dev/api/stripe/user-account/${userId}`);
+  if (!response.ok) throw new Error(`Failed to fetch user account: ${response.status}`);
+  return response.json();
+};
+
+const fetchAccountStatus = async (accountId: string) => {
+  const response = await fetch('https://handypay-backend.handypay.workers.dev/api/stripe/account-status', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ stripeAccountId: accountId }),
+  });
+  if (!response.ok) throw new Error(`Failed to fetch account status: ${response.status}`);
+  return response.json();
+};
+
+const createStripeAccount = async (userId: string, existingAccountId?: string) => {
+  console.log('🚀 Making API call to create Stripe account link');
+  console.log('📤 Request payload:', {
+    userId,
+    stripeAccountId: existingAccountId,
+    refresh_url: 'handypay://stripe/callback',
+    return_url: 'handypay://stripe/callback'
+  });
+
+  const response = await fetch('https://handypay-backend.handypay.workers.dev/api/stripe/create-account-link', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      userId,
+      stripeAccountId: existingAccountId, // Pass existing account ID to reuse it
+      refresh_url: 'handypay://stripe/callback',
+      return_url: 'handypay://stripe/callback'
+    }),
+  });
+
+  console.log('📥 Response status:', response.status);
+  console.log('📥 Response headers:', Object.fromEntries(response.headers.entries()));
+
+  if (!response.ok) {
+    console.error('❌ API call failed with status:', response.status);
+    const errorText = await response.text();
+    console.error('❌ Error response body:', errorText);
+    throw new Error(`Failed to create account: ${response.status} - ${errorText}`);
+  }
+
+  const result = await response.json();
+  console.log('✅ API call successful, result:', result);
+  return result;
+};
 
 export type GetStartedPageProps = NativeStackScreenProps<RootStackParamList, 'GetStartedPage'>;
 
@@ -23,661 +75,72 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
   const [currentStripeAccountId, setCurrentStripeAccountId] = useState<string | null>(null);
   const [isOnboardingInProgress, setIsOnboardingInProgress] = useState(false);
   const [hasIncompleteOnboarding, setHasIncompleteOnboarding] = useState(false);
-  const [onboardingStatusCheckInterval, setOnboardingStatusCheckInterval] = useState<NodeJS.Timeout | null>(null);
 
+  // Check for incomplete onboarding on mount
+  useEffect(() => {
+    const checkIncompleteOnboarding = async () => {
+      if (!user) return;
 
-  // Function to start polling for onboarding status
-  const startOnboardingStatusCheck = () => {
-    console.log('🔄 Starting onboarding status polling...');
+      try {
+        const userData = await fetchUserAccount(user.id);
+        const accountId = userData.stripe_account_id || userData.stripeAccountId;
 
-    // Check immediately
-    checkOnboardingStatus();
+        if (accountId && !userData.stripe_onboarding_completed) {
+          console.log('📝 Found incomplete onboarding for user');
+          setHasIncompleteOnboarding(true);
+          setCurrentStripeAccountId(accountId);
+        }
+      } catch (error) {
+        console.error('❌ Error checking for incomplete onboarding:', error);
+      }
+    };
 
-    // Temporarily disable interval polling to debug multiple polling issue
-    /*
-    // Then check every 5 seconds
-    const interval = setInterval(() => {
-      checkOnboardingStatus();
-    }, 5000);
+    checkIncompleteOnboarding();
+  }, [user]);
 
-    setOnboardingStatusCheckInterval(interval);
-    */
-  };
-
-  // Function to stop polling for onboarding status
-  const stopOnboardingStatusCheck = () => {
-    console.log('🛑 Stopping onboarding status polling...');
-
-    if (onboardingStatusCheckInterval) {
-      clearInterval(onboardingStatusCheckInterval);
-      setOnboardingStatusCheckInterval(null);
-    }
-  };
-
-  // Function to cancel onboarding process
-  const cancelOnboarding = () => {
-    console.log('🗑️ Cancelling onboarding process...');
-    stopOnboardingStatusCheck();
-    setIsOnboardingInProgress(false);
-
-    Toast.show({
-      type: 'info',
-      text1: 'Process cancelled',
-      text2: 'You can try again anytime'
-    });
-  };
-
-  // Function to check current onboarding status
+  // Consolidated status checking
   const checkOnboardingStatus = async () => {
     if (!user) return;
 
     try {
       console.log('🔍 Checking onboarding status...');
+      const userData = await fetchUserAccount(user.id);
 
-      const userAccountResponse = await fetch(
-        `https://handypay-backend.handypay.workers.dev/api/stripe/user-account/${user.id}`
-      );
+      if (userData.stripe_onboarding_completed) {
+        console.log('✅ Onboarding completed, navigating to SuccessPage');
+        setIsOnboardingInProgress(false);
+        navigation.replace('SuccessPage');
+        return;
+      }
 
-      if (userAccountResponse.ok) {
-        const userData = await userAccountResponse.json();
-        console.log('📊 User data from backend:', userData);
+      const accountId = userData.stripe_account_id || userData.stripeAccountId;
+      if (accountId) {
+        const statusData = await fetchAccountStatus(accountId);
+        const chargesEnabled = statusData.accountStatus?.charges_enabled;
 
-        // Check if user has completed onboarding in backend (webhook might have updated it)
-        if (userData.stripe_onboarding_completed) {
-          console.log('✅ Onboarding completed in backend (via webhook), navigating to SuccessPage');
-          stopOnboardingStatusCheck();
+        if ((chargesEnabled || userData.stripe_onboarding_completed) && isOnboardingInProgress) {
+          console.log('✅ Onboarding completed during polling, navigating to SuccessPage');
           setIsOnboardingInProgress(false);
-          console.log('✅ Executing navigation.replace(SuccessPage) from checkOnboardingStatus');
           navigation.replace('SuccessPage');
-          return;
-        }
-
-        if (userData.stripe_account_id || userData.stripeAccountId) {
-          const accountId = userData.stripe_account_id || userData.stripeAccountId;
-
-          const statusResponse = await fetch(
-            `https://handypay-backend.handypay.workers.dev/api/stripe/account-status`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ stripeAccountId: accountId }),
-            }
-          );
-
-          if (statusResponse.ok) {
-            const statusData = await statusResponse.json();
-
-            const chargesEnabled = statusData.accountStatus?.charges_enabled;
-            const onboardingCompleted = userData.stripe_onboarding_completed;
-
-            console.log('📊 Status check result:', {
-              chargesEnabled,
-              onboardingCompleted,
-              isOnboardingInProgress,
-              detailsSubmitted: statusData.accountStatus?.details_submitted
-            });
-
-            // If onboarding is now complete, navigate to success page
-            if ((chargesEnabled || onboardingCompleted) && isOnboardingInProgress) {
-              console.log('✅ Onboarding completed during polling, navigating to SuccessPage');
-              stopOnboardingStatusCheck();
-              setIsOnboardingInProgress(false);
-              console.log('✅ Executing navigation.replace(SuccessPage) from polling completion');
-              navigation.replace('SuccessPage');
-              return;
-            }
-          }
         }
       }
     } catch (error) {
-      console.error('Error checking onboarding status:', error);
+      console.error('❌ Error checking onboarding status:', error);
     }
   };
 
-  // Cleanup polling on component unmount
-  useEffect(() => {
-    return () => {
-      // Only log cleanup in development mode
-      if (__DEV__) {
-        console.log('🧹 GetStartedPage cleanup');
-      }
-
-      // Stop all polling
-      stopOnboardingStatusCheck();
-
-      // Reset all state to clean slate
-      setLoading(false);
-      setCurrentStripeAccountId(null);
-      setIsOnboardingInProgress(false);
-
-      // Clear any intervals that might still be running
-      if (onboardingStatusCheckInterval) {
-        clearInterval(onboardingStatusCheckInterval);
-        setOnboardingStatusCheckInterval(null);
-      }
-    };
-  }, []);
-
-  // Temporarily disable AppState listener to debug multiple polling issue
-  /*
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'active') {
-        console.log('📱 App became active, checking onboarding status...');
-        // Small delay to let things settle
-        setTimeout(() => {
-          checkOnboardingStatus();
-        }, 1000);
-      }
+  const cancelOnboarding = () => {
+    console.log('🗑️ Cancelling onboarding process...');
+    setIsOnboardingInProgress(false);
+    setHasIncompleteOnboarding(true); // Mark as incomplete so button shows "Continue Onboarding"
+    Toast.show({
+      type: 'info',
+      text1: 'Login cancelled',
+      text2: 'You can try again anytime'
     });
-
-    return () => subscription?.remove();
-  }, []);
-  */
-
-  useEffect(() => {
-    // Handle deep links from Stripe onboarding
-    const handleDeepLink = (event: { url: string }) => {
-      console.log('🔗 DEEP LINK RECEIVED:', event.url, 'Timestamp:', Date.now());
-      console.log('🔗 Full event:', JSON.stringify(event, null, 2));
-
-      // Dismiss any existing alerts/modals before processing the deep link
-      // Note: Alert.dismiss is not available in React Native
-
-      // Check if this is a Stripe onboarding callback
-      if (event.url.includes('stripe') || event.url.includes('onboarding') ||
-          event.url.startsWith('handypay://stripe/') ||
-          event.url.includes('handypay-backend.handypay.workers.dev/stripe/')) {
-        console.log('Stripe onboarding callback detected:', event.url);
-
-        // Determine the type of callback
-        const isSuccess = event.url.includes('/return') || event.url.includes('/success');
-        const isIncomplete = event.url.includes('/incomplete') || event.url.includes('/complete');
-        const isRefresh = event.url.includes('/refresh');
-        const isError = event.url.includes('/error');
-
-        console.log('🔍 Deep link analysis:', {
-          url: event.url,
-          isSuccess,
-          isIncomplete,
-          isRefresh,
-          isError,
-          containsSuccess: event.url.includes('/success'),
-          containsReturn: event.url.includes('/return'),
-          containsComplete: event.url.includes('/complete'),
-          containsIncomplete: event.url.includes('/incomplete'),
-          containsRefresh: event.url.includes('/refresh'),
-          containsError: event.url.includes('/error')
-        });
-
-        if (isSuccess) {
-          console.log('🎉 Stripe onboarding actually completed successfully!');
-          // Onboarding is truly complete - proceed with success flow
-          const url = new URL(event.url);
-          const accountIdFromUrl = url.searchParams.get('accountId') || undefined;
-          captureStripeAccountData(accountIdFromUrl, 0, 5);
-
-        } else if (isIncomplete) {
-          console.log('⏳ Stripe onboarding incomplete - user exited or saved for later');
-
-          // Extract account ID from URL if available
-          const url = new URL(event.url);
-          const accountIdFromUrl = url.searchParams.get('accountId');
-
-          if (accountIdFromUrl) {
-            console.log('📋 Account ID from incomplete redirect:', accountIdFromUrl);
-            // Update state to show "Continue Onboarding" button
-            setCurrentStripeAccountId(accountIdFromUrl);
-            setHasIncompleteOnboarding(true);
-
-            // Show a message to the user
-            setTimeout(() => {
-              Alert.alert(
-                'Onboarding Incomplete',
-                'It looks like you didn\'t complete the Stripe onboarding process. You can continue where you left off anytime.',
-                [{ text: 'OK' }]
-              );
-            }, 1000);
-          } else {
-            console.log('⚠️ No account ID in incomplete redirect');
-          }
-
-        } else if (isError) {
-          console.log('❌ Stripe onboarding error');
-
-          // Extract error from URL
-          const url = new URL(event.url);
-          const errorParam = url.searchParams.get('error');
-
-          Alert.alert(
-            'Onboarding Error',
-            `There was an error with Stripe onboarding: ${errorParam || 'Unknown error'}`,
-            [{ text: 'OK' }]
-          );
-
-        } else if (isRefresh) {
-          console.log('🔄 Stripe onboarding refresh requested');
-
-          // Extract account ID from URL if available
-          const url = new URL(event.url);
-          const accountIdFromUrl = url.searchParams.get('accountId');
-
-          if (accountIdFromUrl) {
-            console.log('📋 Account ID from refresh redirect:', accountIdFromUrl);
-            setCurrentStripeAccountId(accountIdFromUrl);
-            setHasIncompleteOnboarding(true);
-          }
-
-          // User wants to restart onboarding - they can click the button again
-          setTimeout(() => {
-            Alert.alert(
-              'Restart Onboarding',
-              'You can restart the Stripe onboarding process anytime.',
-              [{ text: 'OK' }]
-            );
-          }, 1000);
-
-        } else {
-          console.log('❓ Unknown Stripe deep link type');
-          // Handle unknown deep link type
-          Alert.alert(
-            'Unknown Status',
-            'Received an unknown status from Stripe onboarding.',
-            [{ text: 'OK' }]
-          );
-        }
-
-      }
-    };
-
-    // Add event listener for deep links
-    const subscription = Linking.addEventListener('url', handleDeepLink);
-
-    // Check for initial URL (in case app was opened from a deep link)
-    Linking.getInitialURL().then((url) => {
-      if (url) {
-        handleDeepLink({ url });
-      }
-    });
-
-    return () => {
-      subscription?.remove();
-    };
-  }, [navigation, user, currentStripeAccountId]);
-
-
-
-  // Check user's current onboarding status on component mount
-  useEffect(() => {
-    const checkOnboardingStatus = async () => {
-      console.log('🔍 Starting onboarding status check...');
-      if (!user) {
-        console.log('❌ No user available for onboarding check');
-        return;
-      }
-
-      console.log('🔍 Checking existing onboarding status for user:', user.id);
-
-      try {
-        // Check if user has already completed onboarding
-        const userAccountResponse = await fetch(
-          `https://handypay-backend.handypay.workers.dev/api/stripe/user-account/${user.id}`
-        );
-
-        if (userAccountResponse.ok) {
-          const userData = await userAccountResponse.json();
-          console.log('📊 User data from backend:', userData);
-
-            // If user has a Stripe account ID, check its status
-            if (userData.stripe_account_id || userData.stripeAccountId) {
-              const accountId = userData.stripe_account_id || userData.stripeAccountId;
-
-              console.log('📋 Found existing Stripe account:', accountId);
-
-              // Set the current account ID and mark as incomplete onboarding
-              setCurrentStripeAccountId(accountId);
-              setHasIncompleteOnboarding(true);
-
-            // Get account status from Stripe
-            const statusResponse = await fetch(
-              `https://handypay-backend.handypay.workers.dev/api/stripe/account-status`,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ stripeAccountId: accountId }),
-              }
-            );
-
-            if (statusResponse.ok) {
-              const statusData = await statusResponse.json();
-
-              console.log('📊 Account status:', {
-                details_submitted: statusData.accountStatus?.details_submitted,
-                charges_enabled: statusData.accountStatus?.charges_enabled,
-                onboarding_completed: userData.stripe_onboarding_completed,
-                backend_onboarding_completed: userData.stripe_onboarding_completed
-              });
-
-              // If onboarding is completed (either in Stripe or our database)
-              const chargesEnabled = statusData.accountStatus?.charges_enabled;
-              const onboardingCompleted = userData.stripe_onboarding_completed; // Use backend data
-              const shouldNavigate = chargesEnabled || onboardingCompleted;
-
-              console.log('🎯 Onboarding decision:', {
-                chargesEnabled,
-                onboardingCompleted,
-                shouldNavigate
-              });
-
-            if (shouldNavigate) {
-              console.log('✅ Onboarding already completed, navigating to SuccessPage');
-
-              // Update Supabase to ensure consistency
-              await SupabaseUserService.updateStripeAccount(
-                user.id,
-                accountId,
-                true // Mark as completed
-              );
-
-              // Navigate to success page
-              navigation.replace('SuccessPage');
-              return;
-            }
-            }
-          }
-        }
-
-        console.log('ℹ️ No completed onboarding found, user can start fresh');
-      } catch (error) {
-        console.error('❌ Error checking onboarding status:', error);
-        // Don't block the user if the check fails - they can still start onboarding
-      }
-    };
-
-    // Check onboarding status on component mount
-    checkOnboardingStatus();
-  }, [user, navigation]);
-
-  // Handle navigation focus/blur to reset state when user navigates away and back
-  useEffect(() => {
-    const unsubscribeFocus = navigation.addListener('focus', () => {
-      // Only log in development mode to reduce console spam during login
-      if (__DEV__) {
-        console.log('🎯 GetStartedPage focused - resetting state');
-      }
-
-      // Reset all state when user navigates back to this screen
-      setLoading(false);
-      setCurrentStripeAccountId(null);
-      setIsOnboardingInProgress(false);
-
-      // Stop any lingering polling
-      stopOnboardingStatusCheck();
-    });
-
-    const unsubscribeBlur = navigation.addListener('blur', () => {
-      // Only log in development mode
-      if (__DEV__) {
-        console.log('👁️ GetStartedPage blurred - cleaning up');
-      }
-
-      // Clean up when user navigates away from this screen
-      stopOnboardingStatusCheck();
-      setLoading(false);
-
-      // Only log blur cleanup in development mode
-      if (__DEV__) {
-        console.log('🧹 GetStartedPage blur cleanup');
-      }
-    });
-
-    return () => {
-      unsubscribeFocus();
-      unsubscribeBlur();
-    };
-  }, [navigation]);
-
-  const captureStripeAccountData = async (accountId?: string, retryCount = 0, maxRetries = 5) => {
-    console.log('🎯 captureStripeAccountData called with:', {
-      accountId,
-      retryCount,
-      maxRetries,
-      hasUser: !!user,
-      userId: user?.id
-    });
-
-    if (!user) {
-      console.error('❌ No user data available for capturing Stripe account');
-      return;
-    }
-
-    try {
-      console.log(`🔍 Capturing Stripe account data for user: ${user.id} (attempt ${retryCount + 1}/${maxRetries + 1})`);
-
-      let stripeAccountId = accountId;
-
-      // If no accountId provided, try to get it from user profile
-      if (!stripeAccountId) {
-        console.log('🔄 No accountId provided, checking user profile...');
-
-        // Get user profile data
-        const userProfile = await stripeOnboardingManager.getUserProfile(user.id);
-
-        if (userProfile?.stripeAccountId) {
-          stripeAccountId = userProfile.stripeAccountId;
-          console.log('✅ Found account ID in user profile:', stripeAccountId);
-        } else {
-          console.log('🔄 No account ID in user profile, checking legacy backend...');
-
-          // Fallback to deployed backend API
-          const userAccountResponse = await fetch(
-            `https://handypay-backend.handypay.workers.dev/api/stripe/user-account/${user.id}`
-          );
-
-          if (!userAccountResponse.ok) {
-            if (userAccountResponse.status === 404) {
-              throw new Error('404: No Stripe account found for user');
-            }
-            throw new Error(`Failed to get user account: ${userAccountResponse.status}`);
-          }
-
-          const userAccountData = await userAccountResponse.json();
-          stripeAccountId = userAccountData.stripe_account_id || userAccountData.stripeAccountId;
-
-          if (!stripeAccountId) {
-            throw new Error('No Stripe account ID found for user');
-          }
-        }
-      }
-
-      console.log('✅ Using Stripe account ID:', stripeAccountId);
-
-      // Step 2: Get account status using the existing deployed API
-      const statusResponse = await fetch(
-        `https://handypay-backend.handypay.workers.dev/api/stripe/account-status`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ stripeAccountId: stripeAccountId }),
-        }
-      );
-
-      if (!statusResponse.ok) {
-        if (statusResponse.status === 404) {
-          throw new Error('404: Stripe account not found');
-        }
-        throw new Error(`Failed to get account status: ${statusResponse.status}`);
-      }
-
-      const accountData = await statusResponse.json();
-      console.log('✅ Account status retrieved:', accountData);
-
-      // Step 3: Check onboarding status and update accordingly
-      const detailsSubmitted = accountData.accountStatus?.details_submitted;
-      const chargesEnabled = accountData.accountStatus?.charges_enabled;
-
-      console.log('📝 Stripe Account Status:', {
-          userId: user.id,
-          stripeAccountId,
-        details_submitted: detailsSubmitted,
-        charges_enabled: chargesEnabled,
-        payouts_enabled: accountData.accountStatus?.payouts_enabled
-        });
-
-        // Step 4: Store in backend database
-        try {
-          const backendResponse = await fetch(
-            'https://handypay-backend.handypay.workers.dev/api/stripe/complete-onboarding',
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                userId: user.id,
-                stripeAccountId: stripeAccountId,
-              }),
-            }
-          );
-
-          if (backendResponse.ok) {
-            console.log('✅ Onboarding completion stored in backend database');
-          } else {
-            console.log('⚠️ Failed to store completion in backend');
-          }
-        } catch (error) {
-          console.error('Error updating backend:', error);
-        }
-
-      // Step 4: Update Supabase with onboarding completion status
-      // Mark as completed if charges are enabled (account can accept payments)
-        if (stripeAccountId) {
-        // Mark as completed if charges are enabled (account is actually functional)
-        // This is more reliable than details_submitted which might be false for pre-verified accounts
-        const onboardingCompleted = chargesEnabled; // Account can accept payments when charges_enabled is true
-
-        console.log(`🔄 Updating Supabase - onboarding completed: ${onboardingCompleted}`);
-        console.log(`📊 Account Status Details:`, {
-          detailsSubmitted,
-          chargesEnabled,
-          onboardingCompleted,
-          reason: chargesEnabled ? 'charges_enabled is true' : 'charges_enabled is false'
-        });
-
-        try {
-          const supabaseUpdated = await SupabaseUserService.updateStripeAccount(
-            user.id,
-            stripeAccountId,
-            onboardingCompleted
-          );
-
-          if (supabaseUpdated) {
-            console.log('✅ Stripe account data stored in Supabase successfully');
-          } else {
-            console.error('❌ Supabase updateStripeAccount returned false - possible database error');
-            console.error('❌ Supabase update failed for user:', user.id, 'account:', stripeAccountId);
-            // Log additional context for debugging
-            console.error('❌ Account status context:', {
-              detailsSubmitted,
-              chargesEnabled,
-              stripeAccountId,
-              onboardingCompleted,
-              accountData
-            });
-          }
-        } catch (supabaseError) {
-          console.error('❌ Exception during Supabase update:', supabaseError);
-          console.error('❌ Supabase update failed with exception for user:', user.id);
-
-          // Don't fail the entire flow if Supabase update fails
-          // The backend update above should still work
-        }
-      } else {
-        console.warn('⚠️ No stripeAccountId available for Supabase update');
-      }
-
-      // Step 5: Show appropriate success message and navigate
-      console.log(`🎯 Determining success message - detailsSubmitted: ${detailsSubmitted}, chargesEnabled: ${chargesEnabled}`);
-
-      if (chargesEnabled) {
-        console.log('🎉 Onboarding completed according to API - showing success message!');
-        setTimeout(() => {
-          Toast.show({
-            type: 'success',
-            text1: 'Setup completed!',
-            text2: 'Your account is ready to accept payments'
-          });
-          console.log('🚀 Setting navigation timeout to SuccessPage (charges enabled)');
-          setTimeout(() => {
-            console.log('✅ Executing navigation to SuccessPage (charges enabled)');
-            navigation.replace('SuccessPage');
-          }, 1500);
-        }, 300);
-      } else if (detailsSubmitted) {
-        console.log('📋 Details submitted but account not yet enabled - showing review message');
-        setTimeout(() => {
-          Toast.show({
-            type: 'success',
-            text1: 'Details submitted!',
-            text2: 'Stripe is reviewing your account'
-          });
-          console.log('🚀 Setting navigation timeout to SuccessPage (details submitted)');
-          setTimeout(() => {
-            console.log('✅ Executing navigation to SuccessPage (details submitted)');
-            navigation.replace('SuccessPage');
-          }, 1500);
-        }, 300);
-      } else {
-        console.log('⚠️ Account exists but no progress made - showing setup message');
-        setTimeout(() => {
-          Toast.show({
-            type: 'info',
-            text1: 'Account connected',
-            text2: 'Complete your Stripe setup to start accepting payments'
-          });
-          console.log('🚀 Setting navigation timeout to SuccessPage (account connected)');
-          setTimeout(() => {
-            console.log('✅ Executing navigation to SuccessPage (account connected)');
-            navigation.replace('SuccessPage');
-          }, 1500);
-        }, 300);
-      }
-
-    } catch (error) {
-      console.error(`❌ Error capturing Stripe account data (attempt ${retryCount + 1}):`, error);
-
-      // Check if this is a 404 error (account not found) and we haven't exceeded max retries
-      const is404Error = error instanceof Error && error.message.includes('404');
-      const shouldRetry = is404Error && retryCount < maxRetries;
-
-      if (shouldRetry) {
-        const delayMs = Math.min(1000 * Math.pow(2, retryCount), 10000); // Exponential backoff, max 10 seconds
-        console.log(`⏳ Account not found, retrying in ${delayMs}ms...`);
-
-        setTimeout(() => {
-          captureStripeAccountData(accountId, retryCount + 1, maxRetries);
-        }, delayMs);
-        return;
-      }
-
-      // Max retries reached or different error - show fallback
-      console.log('❌ Max retries reached or different error, showing fallback');
-
-      setTimeout(() => {
-        Toast.show({
-          type: 'success',
-          text1: 'Setup completed!',
-          text2: 'Account data will be synced when you restart the app'
-        });
-        setTimeout(() => navigation.replace('SuccessPage'), 1500);
-      }, 300);
-    }
   };
 
+  // Handle Stripe onboarding with in-app browser
   const handleStripeOnboarding = async () => {
     if (!user) {
       Alert.alert('Error', 'Please sign in first');
@@ -685,191 +148,185 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
     }
 
     setLoading(true);
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Brief delay
 
-    // Wait 1 second before showing the alert
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // First, check if user already has an incomplete onboarding
+    if (hasIncompleteOnboarding && currentStripeAccountId) {
+      console.log('🔄 Continuing with existing incomplete onboarding:', currentStripeAccountId);
 
-    // Check if we have a preloaded URL
-    const preloadedUrl = stripeOnboardingManager.getPreloadedUrl();
-
-    if (preloadedUrl && stripeOnboardingManager.isReady()) {
-      console.log('🎉 Using preloaded Stripe onboarding URL');
-      setCurrentStripeAccountId(null); // We'll get this from the backend when needed
-
-      // Show alert to confirm before opening Stripe
-      Alert.alert(
-        'Continue to Stripe',
-        'You\'ll be redirected to Stripe to complete your merchant account setup. This will open in your browser.',
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-            onPress: () => {
-              console.log('User cancelled Stripe redirect');
-              setLoading(false);
+      const shouldContinue = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          'Continue to Stripe',
+          'You\'ll be redirected to Stripe to complete your merchant account setup. This will open in the app.',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => resolve(false)
+            },
+            {
+              text: 'Continue',
+              style: 'default',
+              onPress: () => resolve(true)
             }
-          },
-          {
-            text: 'Continue',
-            style: 'default',
-            onPress: async () => {
-              try {
-                // Open the preloaded Stripe onboarding URL in the device's browser
-                const supported = await Linking.canOpenURL(preloadedUrl);
-                if (supported) {
-                  await Linking.openURL(preloadedUrl);
-                } else {
-                  Alert.alert('Error', 'Unable to open Stripe onboarding link');
-                }
-              } catch (error) {
-                console.error('Error opening Stripe URL:', error);
-                Alert.alert('Error', 'Unable to open Stripe onboarding link');
-              } finally {
-                setLoading(false);
-              }
-            }
-          }
-        ]
-      );
+          ]
+        );
+      });
+
+      if (!shouldContinue) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        // Continue with existing account - create a new onboarding link
+        console.log('🔄 Creating onboarding link for existing account:', currentStripeAccountId);
+        const data = await createStripeAccount(user.id, currentStripeAccountId);
+        console.log('✅ Stripe onboarding link created:', data.url);
+
+        const result = await WebBrowser.openAuthSessionAsync(
+          data.url,
+          'handypay://stripe/callback'
+        );
+        console.log('🔗 Stripe onboarding browser result:', result);
+
+        if (result.type === 'cancel') {
+          console.log('🚫 User cancelled Stripe onboarding in browser');
+          setIsOnboardingInProgress(false);
+          setHasIncompleteOnboarding(true);
+          Toast.show({
+            type: 'info',
+            text1: 'Login cancelled',
+            text2: 'You can try again anytime'
+          });
+          setLoading(false);
+          return;
+        }
+
+        setIsOnboardingInProgress(true);
+        checkOnboardingStatus();
+      } catch (error) {
+        console.error('Error continuing Stripe onboarding:', error);
+        Alert.alert('Error', 'Unable to continue Stripe onboarding');
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
-    // Fallback: Create new onboarding link if preload failed
-    try {
-      // First check if user has already completed onboarding (fast check)
-      const userAccountResponse = await Promise.race([
-        fetch(`https://handypay-backend.handypay.workers.dev/api/stripe/user-account/${user.id}`),
-        new Promise<Response>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
-      ]);
+    // Try preloaded URL second (for new users)
+    const preloadedUrl = stripeOnboardingManager.getPreloadedUrl();
+    if (preloadedUrl && stripeOnboardingManager.isReady()) {
+      console.log('🎉 Using preloaded Stripe onboarding URL');
 
-      if (userAccountResponse.ok) {
-        const userData = await userAccountResponse.json();
-        if (userData.stripe_account_id || userData.stripeAccountId) {
-          const accountId = userData.stripe_account_id || userData.stripeAccountId;
-          const statusResponse = await Promise.race([
-            fetch(`https://handypay-backend.handypay.workers.dev/api/stripe/account-status`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ stripeAccountId: accountId }),
-            }),
-            new Promise<Response>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
-          ]);
-
-          if (statusResponse.ok) {
-            const statusData = await statusResponse.json();
-
-            // Check if onboarding is completed (same logic as main check)
-            const chargesEnabled = statusData.accountStatus?.charges_enabled;
-            const onboardingCompleted = userData.stripe_onboarding_completed;
-            const shouldNavigate = chargesEnabled || onboardingCompleted;
-
-            console.log('🎯 Fallback onboarding decision:', {
-              chargesEnabled,
-              onboardingCompleted,
-              shouldNavigate,
-              detailsSubmitted: statusData.accountStatus?.details_submitted
-            });
-
-            if (shouldNavigate) {
-              console.log('✅ Onboarding completed (fallback check), navigating to SuccessPage');
-              setLoading(false);
-              navigation.replace('SuccessPage');
-              return;
+      const shouldContinue = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          'Continue to Stripe',
+          'You\'ll be redirected to Stripe to complete your merchant account setup. This will open in the app.',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => resolve(false)
+            },
+            {
+              text: 'Continue',
+              style: 'default',
+              onPress: () => resolve(true)
             }
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error checking onboarding status:', error);
-      // Continue with onboarding if check fails or times out
-    }
-
-    try {
-      // Prepare the request data - use better defaults from fullName if available
-      const firstName = user.firstName || (user.fullName ? user.fullName.split(' ')[0] : 'User');
-      const lastName = user.lastName || (user.fullName ? user.fullName.split(' ').slice(1).join(' ') : 'Unknown');
-
-      const requestData = {
-        userId: user.id,
-        firstName: firstName,
-        lastName: lastName,
-        email: user.email || 'user@handypay.com',
-      refresh_url: 'https://handypay-backend.handypay.workers.dev/stripe/refresh',
-      return_url: 'https://handypay-backend.handypay.workers.dev/stripe/return',
-        // Include existing account ID if continuing onboarding
-        ...(currentStripeAccountId && { stripeAccountId: currentStripeAccountId }),
-      };
-
-      console.log('Starting Stripe onboarding for user:', requestData);
-
-      // Call your backend API to create Stripe account and onboarding link
-      const response = await fetch('https://handypay-backend.handypay.workers.dev/api/stripe/create-account-link', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestData),
+          ]
+        );
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to create Stripe account link');
+      if (!shouldContinue) {
+        setLoading(false);
+        return;
       }
 
-      console.log('Stripe onboarding URL created:', data.url);
-      console.log('📝 Received Stripe account ID from backend:', data.accountId);
+      try {
+        const result = await WebBrowser.openAuthSessionAsync(
+          preloadedUrl,
+          'handypay://stripe/callback'
+        );
+        console.log('🔗 Stripe onboarding browser result:', result);
 
-      // Store the account ID for later use in data capture
-      const stripeAccountId = data.accountId;
-      setCurrentStripeAccountId(stripeAccountId);
+        if (result.type === 'cancel') {
+          console.log('🚫 User cancelled Stripe onboarding in browser');
+          setIsOnboardingInProgress(false);
+          setHasIncompleteOnboarding(true);
+          Toast.show({
+            type: 'info',
+            text1: 'Login cancelled',
+            text2: 'You can try again anytime'
+          });
+          setLoading(false);
+          return;
+        }
 
-      // Show alert to confirm before opening Stripe
-      Alert.alert(
-        'Continue to Stripe',
-        'You\'ll be redirected to Stripe to complete your merchant account setup. This will open in your browser.',
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-            onPress: () => {
-              console.log('User cancelled Stripe redirect');
-              setLoading(false);
+        setIsOnboardingInProgress(true);
+        checkOnboardingStatus();
+      } catch (error) {
+        console.error('Error opening Stripe URL:', error);
+        Alert.alert('Error', 'Unable to open Stripe onboarding link');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Finally, create new Stripe account for brand new users
+    try {
+      console.log('🔄 Creating new Stripe account for new user...');
+      const data = await createStripeAccount(user.id);
+      console.log('✅ Stripe account created:', data.url);
+
+      setCurrentStripeAccountId(data.accountId);
+
+      const shouldContinue = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          'Continue to Stripe',
+          'You\'ll be redirected to Stripe to complete your merchant account setup. This will open in the app.',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => resolve(false)
+            },
+            {
+              text: 'Continue',
+              style: 'default',
+              onPress: () => resolve(true)
             }
-          },
-          {
-            text: 'Continue',
-            style: 'default',
-            onPress: async () => {
-              try {
-                // Set onboarding in progress state
-                setIsOnboardingInProgress(true);
+          ]
+        );
+      });
 
-                // Start polling for status updates
-                startOnboardingStatusCheck();
+      if (!shouldContinue) {
+        setLoading(false);
+        return;
+      }
 
-                // Open the Stripe onboarding URL in the device's browser
-                const supported = await Linking.canOpenURL(data.url);
-                if (supported) {
-                  await Linking.openURL(data.url);
-                } else {
-                  Alert.alert('Error', 'Unable to open Stripe onboarding link');
-                }
-              } catch (error) {
-                console.error('Error opening Stripe URL:', error);
-                Alert.alert('Error', 'Unable to open Stripe onboarding link');
-                // Reset onboarding state on error
-                setIsOnboardingInProgress(false);
-                stopOnboardingStatusCheck();
-              } finally {
-                setLoading(false);
-              }
-            }
-          }
-        ]
+      const result = await WebBrowser.openAuthSessionAsync(
+        data.url,
+        'handypay://stripe/callback'
       );
+      console.log('🔗 Stripe onboarding browser result:', result);
+
+      if (result.type === 'cancel') {
+        console.log('🚫 User cancelled Stripe onboarding in browser');
+        setIsOnboardingInProgress(false);
+        setHasIncompleteOnboarding(true);
+        Toast.show({
+          type: 'info',
+          text1: 'Login cancelled',
+          text2: 'You can try again anytime'
+        });
+        setLoading(false);
+        return;
+      }
+
+      setIsOnboardingInProgress(true);
+      checkOnboardingStatus();
     } catch (error) {
       console.error('Stripe onboarding error:', error);
       Alert.alert(
@@ -877,6 +334,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         error instanceof Error ? error.message : 'Failed to start Stripe onboarding. Please try again.',
         [{ text: 'OK' }]
       );
+    } finally {
       setLoading(false);
     }
   };
@@ -1030,11 +488,9 @@ const styles = StyleSheet.create({
   secondaryBtn: { height: 48, borderRadius: 24, backgroundColor: '#f3f4f6',  marginTop: 12 },
   secondaryBtnText: { color: '#111827', fontSize: 18, fontWeight: '600', fontFamily: 'DMSans-Medium' },
   disabledButton: { opacity: 0.6 },
-  loadingContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center' 
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
 });
-
-

@@ -187,11 +187,16 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
 
   // Handle authentication deep links
   useEffect(() => {
+    console.log('🔗 Setting up deep link handler in StartPage');
+
     const handleDeepLink = async (event: { url: string }) => {
+      console.log('🔗 DEEP LINK RECEIVED in StartPage:', event.url, 'Timestamp:', Date.now());
+
       // Check if this is a Google OAuth callback
       if (event.url.includes('google') || event.url.includes('oauth') ||
           event.url.includes('auth.expo.io') || event.url.includes('code=') ||
           event.url.includes('auth/callback')) {
+        console.log('🔗 Google OAuth callback detected in StartPage:', event.url);
         try {
           const url = new URL(event.url.split('#')[0]);
           const code = url.searchParams.get('code');
@@ -255,9 +260,16 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
     };
 
     const subscription = Linking.addEventListener('url', handleDeepLink);
+    console.log('🔗 Deep link event listener registered');
 
-    Linking.getInitialURL().then((url) => {
-      if (url) handleDeepLink({ url });
+    Linking.getInitialURL().then((initialUrl) => {
+      console.log('🔗 Initial URL check:', initialUrl);
+      if (initialUrl) {
+        console.log('🔗 Processing initial URL:', initialUrl);
+        handleDeepLink({ url: initialUrl });
+      }
+    }).catch((error) => {
+      console.error('🔗 Error getting initial URL:', error);
     });
 
     return () => subscription?.remove();
@@ -364,11 +376,26 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
       const result = await googlePromptAsync();
 
       if (result.type === 'success') {
-        console.log('🔵 Google OAuth initiated successfully');
+        console.log('✅ Google OAuth completed successfully');
+        console.log('👤 Google user data:', result.userData);
 
-        // For Google, the actual authentication happens via deep link
-        // The user will be redirected back via the deep link handler
-        // Don't show success message here as the user hasn't completed auth yet
+        if (result.userData) {
+          console.log('👤 Storing Google user data locally:', result.userData.id);
+
+          await setUser(result.userData);
+          await updateLastLogin();
+
+          Toast.show({
+            type: 'success',
+            text1: 'Successfully signed in with Google!',
+          });
+
+          // Let RootNavigator handle navigation based on user onboarding status
+          // Don't navigate here to avoid conflicts with RootNavigator logic
+        } else {
+          console.error('❌ No user data received from Google authentication');
+          Alert.alert('Error', 'Authentication failed - no user data created');
+        }
       } else if (result.type === 'error') {
         console.error('❌ Google authentication error:', result.error);
         Alert.alert('Error', result.error?.message || 'Google authentication failed');
@@ -479,7 +506,7 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
             disabled={loading}
           >
             <Text style={[styles.emailLinkText, loading && styles.disabledText]}>
-              Continue with Email
+              Continue with Email (No OAuth Setup Required)
             </Text>
           </TouchableOpacity>
 

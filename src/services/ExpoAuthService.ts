@@ -3,20 +3,9 @@ import * as AuthSession from "expo-auth-session";
 import { Linking, Platform } from "react-native";
 import { authClient, apiService } from "./api";
 
-// Backend API URL for token verification
-const API_URL = "https://handypay-backend.handypay.workers.dev";
-
-// Google OAuth configuration
-const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || "";
-
-// Use backend-based OAuth flow - redirect to our backend for OAuth initiation
-const GOOGLE_OAUTH_URL = `${API_URL}/auth/google`;
-
 // Only log in development mode to reduce console spam
 if (__DEV__) {
-  console.log("🔗 API_URL configured as:", API_URL);
-  console.log("🔗 Google OAuth URL:", GOOGLE_OAUTH_URL);
-  console.log("🔗 Google Client ID configured:", !!GOOGLE_CLIENT_ID);
+  console.log("🔗 Better Auth configured for Google OAuth");
 }
 
 // Use native Apple Authentication with Better Auth integration
@@ -69,7 +58,6 @@ export const useAppleAuth = () => {
         // Use Better Auth's Apple sign-in to create a proper server session
         const authResult = await authClient.signIn.social({
           provider: "apple",
-          callbackURL: "handypay://auth/callback",
         });
 
         // Create user data from the credential
@@ -78,7 +66,11 @@ export const useAppleAuth = () => {
         const userData = {
           id: credential.user,
           email: credential.email || null,
-          fullName: credential.fullName ? `${credential.fullName.givenName || ''} ${credential.fullName.familyName || ''}`.trim() : null,
+          fullName: credential.fullName
+            ? `${credential.fullName.givenName || ""} ${
+                credential.fullName.familyName || ""
+              }`.trim()
+            : null,
           firstName: credential.fullName?.givenName || null,
           lastName: credential.fullName?.familyName || null,
           authProvider: "apple" as const,
@@ -104,7 +96,10 @@ export const useAppleAuth = () => {
           error: {
             code: "AUTH_ERROR",
             message: "Failed to authenticate with Apple",
-            details: authError instanceof Error ? authError.message : "Unknown auth error",
+            details:
+              authError instanceof Error
+                ? authError.message
+                : "Unknown auth error",
           },
         };
       }
@@ -150,86 +145,96 @@ export const useGoogleAuth = () => {
   // Only log in development mode to reduce console spam
   if (__DEV__) {
     console.log("Google Auth Setup (Better Auth):", {
-      clientId: !!GOOGLE_CLIENT_ID,
-      oauthUrl: GOOGLE_OAUTH_URL,
       isDevelopment: __DEV__,
     });
   }
 
   const promptAsync = async () => {
     try {
-      console.log("Starting Google OAuth flow with Better Auth...");
+      console.log("🔐 Starting Google OAuth with Better Auth...");
 
-      // Use AuthSession to open Google OAuth flow
-      try {
-        console.log("🔐 Starting Google OAuth flow...");
+      // Use Better Auth's social sign-in
+      const authResult = await authClient.signIn.social({
+        provider: "google",
+      });
 
-        // Open Google OAuth URL in browser
-        const result = await AuthSession.startAsync({
-          authUrl: GOOGLE_OAUTH_URL,
-          returnUrl: "handypay://auth/callback",
-        });
+      console.log("🔐 Better Auth Google sign-in result:", authResult);
 
-        console.log("🔐 Google OAuth result:", result);
+      // Type assertion for Better Auth response
+      const result = authResult as any;
 
-        if (result.type === "success" && result.params) {
-          console.log("✅ Google OAuth successful, params:", result.params);
+      if (result?.success) {
+        console.log("✅ Google OAuth successful, getting session data...");
 
-          // Create user data from OAuth result (this will be enhanced by deep link handler)
+        // Better Auth sets up the session, now get the user data from the session
+        console.log("🔍 Getting session from Better Auth...");
+        const session = await authClient.getSession();
+        console.log("🔍 Session result:", session);
+
+        if (session?.data?.user) {
+          const user = session.data.user;
+
+          // Create user data from Better Auth session
           const userData = {
-            id: result.params.userId || result.params.sub || "google-user",
-            email: result.params.email || null,
-            fullName: result.params.name || null,
-            firstName: result.params.given_name || null,
-            lastName: result.params.family_name || null,
+            id: user.id,
+            email: user.email, // ✅ Email from Better Auth
+            fullName: user.name, // ✅ Name from Better Auth
+            firstName: null, // Better Auth doesn't provide first/last name separation
+            lastName: null,
             authProvider: "google" as const,
             appleUserId: null,
-            googleUserId: result.params.userId || result.params.sub || "google-user",
+            googleUserId: user.id,
             stripeAccountId: null,
             stripeOnboardingCompleted: false,
             memberSince: new Date().toISOString(),
             faceIdEnabled: false,
             safetyPinEnabled: false,
-            avatarUri: result.params.picture || undefined,
+            avatarUri: user.image, // ✅ Profile image from Better Auth
           };
+
+          console.log(
+            "👤 Created Google user data from Better Auth session:",
+            userData
+          );
 
           return {
             type: "success",
-            params: result.params,
+            params: result,
             userData: userData,
           };
         } else {
-          console.log("⚠️ Google OAuth cancelled or failed:", result.type);
+          console.log(
+            "⚠️ Better Auth sign-in successful but no session data found"
+          );
           return {
-            type: result.type === "cancel" ? "cancel" : "error",
+            type: "error",
             error: {
-              code: "OAUTH_CANCELLED",
-              message: "Google OAuth was cancelled or failed",
-              details: result.type,
+              code: "NO_SESSION",
+              message: "Sign-in successful but user session not found",
+              details: { authResult: result, session: session },
             },
           };
         }
-      } catch (authError) {
-        console.error("❌ Google auth error:", authError);
+      } else {
+        console.log("⚠️ Better Auth Google sign-in failed:", result);
         return {
           type: "error",
           error: {
-            code: "AUTH_ERROR",
-            message: "Failed to authenticate with Google",
-            details:
-              authError instanceof Error
-                ? authError.message
-                : "Unknown auth error",
+            code: "AUTH_FAILED",
+            message: "Google sign-in failed",
+            details: result,
           },
         };
       }
     } catch (error: any) {
-      console.error("Google auth error:", error);
+      console.error("❌ Google auth error:", error);
       return {
         type: "error",
         error: {
-          message: error.message || "Google authentication failed",
-          code: error.code || "UNKNOWN_ERROR",
+          code: "AUTH_ERROR",
+          message: "Failed to authenticate with Google",
+          details:
+            error instanceof Error ? error.message : "Unknown auth error",
         },
       };
     }
