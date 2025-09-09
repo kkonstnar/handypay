@@ -251,6 +251,37 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
             setLoading(false);
             setProvider(null);
           }
+
+          // Check for new URL parameter format from backend
+          const success = url.searchParams.get('success');
+          const userDataParam = url.searchParams.get('userData');
+
+          if (success === 'true' && userDataParam) {
+            console.log('🎉 Processing backend OAuth success with user data');
+
+            try {
+              const userData = JSON.parse(decodeURIComponent(userDataParam));
+              console.log('👤 Parsed user data from URL:', userData);
+
+              await setUser(userData);
+              await updateLastLogin();
+
+              Toast.show({
+                type: 'success',
+                text1: 'Successfully signed in with Google!',
+              });
+
+              setLoading(false);
+              setProvider(null);
+
+              // Let RootNavigator handle navigation based on user onboarding status
+            } catch (parseError) {
+              console.error('❌ Error parsing user data from URL:', parseError);
+              Alert.alert('Authentication Error', 'Failed to process user data');
+              setLoading(false);
+              setProvider(null);
+            }
+          }
         } catch (error) {
           Alert.alert('Authentication Error', `Failed to complete Google authentication: ${error instanceof Error ? error.message : 'Unknown error'}`);
           setLoading(false);
@@ -394,7 +425,16 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
           // Don't navigate here to avoid conflicts with RootNavigator logic
         } else {
           console.error('❌ No user data received from Google authentication');
-          Alert.alert('Error', 'Authentication failed - no user data created');
+
+          // Check if this might be the new URL parameter format from backend
+          console.log('🔍 Checking for URL parameter user data...');
+
+          // The backend might return user data as URL parameters
+          // This would be handled by the deep link listener
+          Toast.show({
+            type: 'info',
+            text1: 'Completing Google sign-in...',
+          });
         }
       } else if (result.type === 'error') {
         console.error('❌ Google authentication error:', result.error);

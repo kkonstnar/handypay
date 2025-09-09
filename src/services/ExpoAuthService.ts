@@ -157,121 +157,33 @@ export const useGoogleAuth = () => {
 
   const promptAsync = async () => {
     try {
-      console.log("🔐 Starting Google OAuth with browser redirect...");
+      console.log("🔐 Starting Google OAuth with Better Auth client...");
 
-      // Create the Google OAuth URL using Better Auth's built-in social provider
-      const oauthUrl = `${API_BASE_URL}/api/auth/sign-in/google`;
+      // Use the proper Better Auth client method for social sign-in
+      const authResult = await authClient.signIn.social({
+        provider: "google",
+        callbackURL: "/dashboard", // This will be handled by the mobile app's deep linking
+      });
 
-      console.log("🌐 Opening browser for Google OAuth:", oauthUrl);
+      console.log("🔐 Better Auth social sign-in result:", authResult);
 
-      // Use WebBrowser with auth session for proper OAuth flow
-      const authResult = await WebBrowser.openAuthSessionAsync(
-        oauthUrl,
-        REDIRECT_URI,
-        {
-          dismissButtonStyle: "cancel",
-          presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
-        }
-      );
+      if (authResult.success) {
+        console.log("✅ Better Auth OAuth successful");
 
-      console.log("🔐 AuthSession result:", authResult);
-
-      if (authResult.type === "success") {
-        console.log("✅ OAuth successful, processing callback...");
-
-        // Extract the authorization code from the callback URL
-        const { url } = authResult;
-        const urlObj = new URL(url);
-        const code = urlObj.searchParams.get("code");
-        const error = urlObj.searchParams.get("error");
-
-        if (error) {
-          console.error("❌ OAuth callback error:", error);
-          return {
-            type: "error",
-            error: {
-              code: "OAUTH_ERROR",
-              message: `Google OAuth failed: ${error}`,
-            },
-          };
-        }
-
-        if (!code) {
-          console.error("❌ No authorization code in callback");
-          return {
-            type: "error",
-            error: {
-              code: "NO_CODE",
-              message: "No authorization code received from Google",
-            },
-          };
-        }
-
-        console.log("🔑 Received authorization code, exchanging for tokens...");
-
-        // Exchange the authorization code for user data
-        const tokenResponse = await fetch(`${API_BASE_URL}/auth/google/token`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            code: code,
-            redirectUri: REDIRECT_URI,
-          }),
-        });
-
-        if (!tokenResponse.ok) {
-          const errorText = await tokenResponse.text();
-          console.error("❌ Token exchange failed:", errorText);
-          return {
-            type: "error",
-            error: {
-              code: "TOKEN_EXCHANGE_FAILED",
-              message: "Failed to exchange authorization code for tokens",
-              details: errorText,
-            },
-          };
-        }
-
-        const tokenData = await tokenResponse.json();
-        console.log("✅ Token exchange successful");
-
-        // Create user data from the response
-        const userData = {
-          id: tokenData.user.id,
-          email: tokenData.user.email,
-          fullName: tokenData.user.name,
-          firstName: null, // Google doesn't provide first/last name separation
-          lastName: null,
-          authProvider: "google" as const,
-          appleUserId: null,
-          googleUserId: tokenData.user.id,
-          stripeAccountId: null,
-          stripeOnboardingCompleted: false,
-          memberSince: new Date().toISOString(),
-          faceIdEnabled: false,
-          safetyPinEnabled: false,
-          avatarUri: tokenData.user.picture,
-        };
-
-        console.log("👤 Created Google user data:", userData);
-
+        // The auth client should handle the OAuth flow and return user data
+        // In mobile apps, this usually redirects to the callback URL
         return {
           type: "success",
           params: authResult,
-          userData: userData,
+          userData: authResult.data?.user || null,
         };
-      } else if (authResult.type === "dismiss") {
-        console.log("🚫 OAuth dismissed by user");
-        return { type: "cancel" };
       } else {
-        console.log("⚠️ OAuth failed:", authResult.type);
+        console.error("❌ Better Auth OAuth failed:", authResult.error);
         return {
           type: "error",
           error: {
-            code: "OAUTH_FAILED",
-            message: "OAuth authentication failed",
+            code: "OAUTH_ERROR",
+            message: authResult.error?.message || "Google OAuth failed",
             details: authResult,
           },
         };
