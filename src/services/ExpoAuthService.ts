@@ -157,33 +157,87 @@ export const useGoogleAuth = () => {
 
   const promptAsync = async () => {
     try {
-      console.log("🔐 Starting Google OAuth with Better Auth client...");
+      console.log("🔐 Starting Google OAuth with manual browser opening...");
 
-      // Use the proper Better Auth client method for social sign-in
-      const authResult = await authClient.signIn.social({
-        provider: "google",
-        callbackURL: "/dashboard", // This will be handled by the mobile app's deep linking
-      });
+      // Since Better Auth client isn't opening browser in Expo, let's do it manually
+      const oauthUrl = `${API_BASE_URL}/api/auth/sign-in/google`;
 
-      console.log("🔐 Better Auth social sign-in result:", authResult);
+      console.log("🌐 Opening browser for Google OAuth:", oauthUrl);
 
-      if (authResult.success) {
-        console.log("✅ Better Auth OAuth successful");
+      // Use WebBrowser with auth session for proper OAuth flow
+      const authResult = await WebBrowser.openAuthSessionAsync(
+        oauthUrl,
+        REDIRECT_URI,
+        {
+          dismissButtonStyle: "cancel",
+          presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
+        }
+      );
 
-        // The auth client should handle the OAuth flow and return user data
-        // In mobile apps, this usually redirects to the callback URL
-        return {
-          type: "success",
-          params: authResult,
-          userData: authResult.data?.user || null,
-        };
+      console.log("🔐 AuthSession result:", authResult);
+
+      if (authResult.type === "success") {
+        console.log("✅ OAuth successful, processing callback...");
+
+        // Extract the authorization code from the callback URL
+        const { url } = authResult;
+        const urlObj = new URL(url);
+        const success = urlObj.searchParams.get("success");
+        const userDataParam = urlObj.searchParams.get("userData");
+        const error = urlObj.searchParams.get("error");
+
+        if (error) {
+          console.error("❌ OAuth callback error:", error);
+          return {
+            type: "error",
+            error: {
+              code: "OAUTH_ERROR",
+              message: `Google OAuth failed: ${error}`,
+            },
+          };
+        }
+
+        if (success === "true" && userDataParam) {
+          console.log("🎉 OAuth successful with user data from URL");
+          try {
+            const userData = JSON.parse(decodeURIComponent(userDataParam));
+            console.log("👤 Parsed user data:", userData);
+
+            return {
+              type: "success",
+              params: authResult,
+              userData: userData,
+            };
+          } catch (parseError) {
+            console.error("❌ Error parsing user data:", parseError);
+            return {
+              type: "error",
+              error: {
+                code: "PARSE_ERROR",
+                message: "Failed to parse user data from OAuth response",
+              },
+            };
+          }
+        } else {
+          console.log("⚠️ OAuth completed but no user data in URL");
+          return {
+            type: "error",
+            error: {
+              code: "NO_USER_DATA",
+              message: "OAuth completed but no user data received",
+            },
+          };
+        }
+      } else if (authResult.type === "dismiss") {
+        console.log("🚫 OAuth dismissed by user");
+        return { type: "cancel" };
       } else {
-        console.error("❌ Better Auth OAuth failed:", authResult.error);
+        console.log("⚠️ OAuth failed:", authResult.type);
         return {
           type: "error",
           error: {
-            code: "OAUTH_ERROR",
-            message: authResult.error?.message || "Google OAuth failed",
+            code: "OAUTH_FAILED",
+            message: "OAuth authentication failed",
             details: authResult,
           },
         };
