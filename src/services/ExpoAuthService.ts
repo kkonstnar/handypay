@@ -164,22 +164,114 @@ export const useGoogleAuth = () => {
 
       console.log("🌐 Opening browser for Google OAuth:", oauthUrl);
 
-      // Use WebBrowser to open the OAuth URL
-      const browserResult = await WebBrowser.openBrowserAsync(oauthUrl, {
+      // Use WebBrowser with auth session for proper OAuth flow
+      const authResult = await WebBrowser.openAuthSessionAsync(oauthUrl, REDIRECT_URI, {
         dismissButtonStyle: "cancel",
         presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
       });
 
-      console.log("🔐 WebBrowser result:", browserResult);
+      console.log("🔐 AuthSession result:", authResult);
 
-      // After the browser closes, we need to wait for the deep link callback
-      // This is handled by the Linking listener in StartPage.tsx
-      // For now, return success assuming the OAuth flow will complete
-      return {
-        type: "success",
-        params: browserResult,
-        userData: null, // Will be populated by the deep link handler
-      };
+      if (authResult.type === "success") {
+        console.log("✅ OAuth successful, processing callback...");
+
+        // Extract the authorization code from the callback URL
+        const { url } = authResult;
+        const urlObj = new URL(url);
+        const code = urlObj.searchParams.get("code");
+        const error = urlObj.searchParams.get("error");
+
+        if (error) {
+          console.error("❌ OAuth callback error:", error);
+          return {
+            type: "error",
+            error: {
+              code: "OAUTH_ERROR",
+              message: `Google OAuth failed: ${error}`,
+            },
+          };
+        }
+
+        if (!code) {
+          console.error("❌ No authorization code in callback");
+          return {
+            type: "error",
+            error: {
+              code: "NO_CODE",
+              message: "No authorization code received from Google",
+            },
+          };
+        }
+
+        console.log("🔑 Received authorization code, exchanging for tokens...");
+
+        // Exchange the authorization code for user data
+        const tokenResponse = await fetch(`${API_BASE_URL}/auth/google/token`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            code: code,
+            redirectUri: REDIRECT_URI,
+          }),
+        });
+
+        if (!tokenResponse.ok) {
+          const errorText = await tokenResponse.text();
+          console.error("❌ Token exchange failed:", errorText);
+          return {
+            type: "error",
+            error: {
+              code: "TOKEN_EXCHANGE_FAILED",
+              message: "Failed to exchange authorization code for tokens",
+              details: errorText,
+            },
+          };
+        }
+
+        const tokenData = await tokenResponse.json();
+        console.log("✅ Token exchange successful");
+
+        // Create user data from the response
+        const userData = {
+          id: tokenData.user.id,
+          email: tokenData.user.email,
+          fullName: tokenData.user.name,
+          firstName: null, // Google doesn't provide first/last name separation
+          lastName: null,
+          authProvider: "google" as const,
+          appleUserId: null,
+          googleUserId: tokenData.user.id,
+          stripeAccountId: null,
+          stripeOnboardingCompleted: false,
+          memberSince: new Date().toISOString(),
+          faceIdEnabled: false,
+          safetyPinEnabled: false,
+          avatarUri: tokenData.user.picture,
+        };
+
+        console.log("👤 Created Google user data:", userData);
+
+        return {
+          type: "success",
+          params: authResult,
+          userData: userData,
+        };
+      } else if (authResult.type === "dismiss") {
+        console.log("🚫 OAuth dismissed by user");
+        return { type: "cancel" };
+      } else {
+        console.log("⚠️ OAuth failed:", authResult.type);
+        return {
+          type: "error",
+          error: {
+            code: "OAUTH_FAILED",
+            message: "OAuth authentication failed",
+            details: authResult,
+          },
+        };
+      }
     } catch (error: any) {
       console.error("❌ Google auth error:", error);
       return {
@@ -187,7 +279,8 @@ export const useGoogleAuth = () => {
         error: {
           code: "AUTH_ERROR",
           message: "Failed to authenticate with Google",
-          details: error instanceof Error ? error.message : "Unknown auth error",
+          details:
+            error instanceof Error ? error.message : "Unknown auth error",
         },
       };
     }
