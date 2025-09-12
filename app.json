@@ -16,8 +16,7 @@
       "bundleIdentifier": "com.handypay.mobile",
       "buildNumber": "5",
       "entitlements": {
-        "com.apple.developer.applesignin": ["Default"],
-        "com.apple.developer.push-notifications": true
+        "com.apple.developer.applesignin": ["Default"]
       },
       "infoPlist": {
         "CFBundleDisplayName": "HandyPay",
@@ -25,7 +24,6 @@
         "NSBiometricUsageDescription": "HandyPay uses biometric authentication (Face ID or Touch ID) to secure your account and transactions.",
         "NSCameraUsageDescription": "HandyPay needs camera access for QR code scanning to process payments.",
         "NSPhotoLibraryUsageDescription": "HandyPay needs photo library access to save transaction receipts.",
-        "UIBackgroundModes": ["remote-notification"],
         "CFBundleURLTypes": [
           {
             "CFBundleURLName": "handypay-oauth",

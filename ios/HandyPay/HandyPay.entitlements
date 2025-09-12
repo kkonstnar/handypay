@@ -6,11 +6,5 @@
     <array>
       <string>Default</string>
     </array>
-    <key>com.apple.developer.push-notifications</key>
-    <true/>
-    <key>UIBackgroundModes</key>
-    <array>
-      <string>remote-notification</string>
-    </array>
   </dict>
 </plist>

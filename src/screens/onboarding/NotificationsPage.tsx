@@ -7,10 +7,10 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/RootNavigator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import * as Notifications from 'expo-notifications';
+// import * as Notifications from 'expo-notifications';
 import { useUser } from '../../contexts/UserContext';
 import { LinearGradient } from 'expo-linear-gradient';
-import { NotificationService } from '../../services/notificationService';
+// import { NotificationService } from '../../services/notificationService';
 
 export type NotificationsPageProps = NativeStackScreenProps<RootStackParamList, 'NotificationsPage'>;
 
@@ -20,61 +20,68 @@ export default function NotificationsPage({ navigation }: NotificationsPageProps
   const [isEnabling, setIsEnabling] = useState(false);
   const [currentPermission, setCurrentPermission] = useState<string | null>(null);
 
-  // Setup notification handler on component mount
+  // TODO: Re-enable notification setup when push notifications are working
   useEffect(() => {
-    const setupNotifications = async () => {
-      // Check current permission status
-      const { status } = await Notifications.getPermissionsAsync();
-      setCurrentPermission(status);
-      console.log('🔍 Current notification permission:', status);
+    // const setupNotifications = async () => {
+    //   // Check current permission status
+    //   const { status } = await Notifications.getPermissionsAsync();
+    //   setCurrentPermission(status);
+    //   console.log('🔍 Current notification permission:', status);
 
-      // Initialize notification handler
-      NotificationService.initializeNotificationHandler();
+    //   // Initialize notification handler
+    //   NotificationService.initializeNotificationHandler();
 
-      // Set up notification listeners
-      const notificationReceivedSubscription = Notifications.addNotificationReceivedListener(notification => {
-        console.log('🔔 Notification received:', notification);
-      });
+    //   // Set up notification listeners
+    //   const notificationReceivedSubscription = Notifications.addNotificationReceivedListener(notification => {
+    //     console.log('🔔 Notification received:', notification);
+    //   });
 
-      const notificationResponseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
-        console.log('🔔 Notification response:', response);
-      });
+    //   const notificationResponseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
+    //     console.log('🔔 Notification response:', response);
+    //   });
 
-      return () => {
-        notificationReceivedSubscription.remove();
-        notificationResponseSubscription.remove();
-      };
-    };
+    //   return () => {
+    //     notificationReceivedSubscription.remove();
+    //     notificationResponseSubscription.remove();
+    //   };
+    // };
 
-    setupNotifications();
+    // setupNotifications();
+    
+    // For now, just set a mock permission status
+    setCurrentPermission('undetermined');
   }, []);
 
   const handleEnableNotifications = async () => {
     setIsEnabling(true);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
+    // TODO: Re-enable when push notifications are working
     try {
-      // Use the notification service to handle everything
-      const result = await NotificationService.setupNotifications();
+      // Mock success for now
+      console.log('✅ Notifications setup mocked as successful');
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      if (result.success) {
-        console.log('✅ Notifications setup completed successfully');
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-        // Navigate directly to next screen
-        navigation.navigate('FeaturesPage');
-      } else {
-        console.log('❌ Notification permissions denied');
-
-        Alert.alert(
-          'Notifications Not Enabled',
-          'You can still use HandyPay, but you won\'t receive instant payment alerts. You can enable notifications later in Settings.',
-          [
-            { text: 'Continue Anyway', onPress: () => navigation.navigate('FeaturesPage') },
-            { text: 'Try Again', onPress: () => handleEnableNotifications() }
-          ]
-        );
-      }
+      // Navigate directly to next screen
+      navigation.navigate('FeaturesPage');
+      
+      // Original notification setup code (commented out):
+      // const result = await NotificationService.setupNotifications();
+      // if (result.success) {
+      //   console.log('✅ Notifications setup completed successfully');
+      //   await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      //   navigation.navigate('FeaturesPage');
+      // } else {
+      //   console.log('❌ Notification permissions denied');
+      //   Alert.alert(
+      //     'Notifications Not Enabled',
+      //     'You can still use HandyPay, but you won\'t receive instant payment alerts. You can enable notifications later in Settings.',
+      //     [
+      //       { text: 'Continue Anyway', onPress: () => navigation.navigate('FeaturesPage') },
+      //       { text: 'Try Again', onPress: () => handleEnableNotifications() }
+      //     ]
+      //   );
+      // }
     } catch (error) {
       console.error('❌ Error setting up notifications:', error);
       Alert.alert(
@@ -93,8 +100,8 @@ export default function NotificationsPage({ navigation }: NotificationsPageProps
     console.log('⏭️ User chose to skip notifications');
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    // Save that notifications were skipped using the service
-    await NotificationService.saveNotificationPreferences(false);
+    // TODO: Re-enable when notifications are working
+    // await NotificationService.saveNotificationPreferences(false);
 
     // Navigate to the next page without enabling notifications
     navigation.navigate('FeaturesPage');
