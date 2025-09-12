@@ -14,6 +14,7 @@ import CustomSplashScreen from './src/components/SplashScreen';
 import Toast from 'react-native-toast-message';
 import toastConfig from './src/components/ui/ToastConfig';
 import { Linking } from 'react-native';
+import { NotificationService } from './src/services/notificationService';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -32,8 +33,13 @@ function AppContent(): React.ReactElement {
     setShowSplash(false);
   }, []);
 
-  // Global deep link handler for debugging
+  // Initialize services and set up handlers
   useEffect(() => {
+    console.log('🚀 Initializing app services...');
+
+    // Initialize notification service
+    NotificationService.initialize();
+
     console.log('🌐 Setting up global deep link handler');
 
     const handleGlobalDeepLink = (event: { url: string }) => {

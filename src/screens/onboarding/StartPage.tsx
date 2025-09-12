@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Linking } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import PhoneTopSvg from '../../../assets/Frame 2121453342.svg';
+import IPhoneGreySvg from '../../../assets/IPhone_12_Pro_Line_Grey.svg';
 import HandyPayLogo from '../../../assets/handypay.svg';
 import QRCodeSvg from '../../../assets/qr-code-https---handyhurry-c-2025-08-20T12-23-41.svg';
 import GoogleLogo from '../../../assets/google.svg';
@@ -50,24 +50,71 @@ const loadExistingUserData = async (googleUserId: string) => {
   }
 };
 
-// Helper function to determine navigation destination based on user status
-const getNavigationDestination = (userData: any): string => {
+// Helper function to check backend onboarding status
+const checkBackendOnboardingStatus = async (userId: string) => {
+  try {
+    console.log('🔍 Checking backend onboarding status for user:', userId);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+
+    const response = await fetch(
+      `https://handypay-backend.handypay.workers.dev/api/stripe/user-account/${userId}`,
+      {
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const backendData = await response.json();
+      const status = {
+        hasAccount: !!backendData.stripe_account_id,
+        isComplete: !!backendData.stripe_onboarding_completed
+      };
+
+      console.log('✅ Backend onboarding status:', status);
+      return status;
+    } else {
+      console.log('❌ Failed to check backend onboarding status');
+      return null;
+    }
+  } catch (error) {
+    console.error('❌ Error checking backend onboarding status:', error);
+    return null;
+  }
+};
+
+// Helper function to determine navigation destination based on user status and backend data
+const getNavigationDestination = async (userData: any): Promise<string> => {
   const hasAccount = userData.id && userData.id !== '';
 
-  if (hasAccount && userData.stripeAccountId && userData.stripeOnboardingCompleted) {
-    // If user has account with Stripe ID and onboarding is complete, go to home
+  if (!hasAccount) {
+    return 'BiometricsPage'; // New user
+  }
+
+  // Check backend status
+  const backendStatus = await checkBackendOnboardingStatus(userData.id);
+
+  if (backendStatus?.isComplete && backendStatus?.hasAccount) {
+    // User has completed onboarding, go to home
     return 'HomeTabs';
-  } else if (hasAccount && userData.stripeAccountId) {
-    // If user has account with Stripe ID but onboarding not complete, go to GetStartedPage
+  } else if (backendStatus?.hasAccount) {
+    // User has Stripe account but onboarding not complete, go to GetStartedPage
     return 'GetStartedPage';
   } else {
-    // New user or no Stripe ID - go through normal flow starting from biometrics
+    // User has no Stripe account, start from biometrics
     return 'BiometricsPage';
   }
 };
 
 
 export type StartPageProps = NativeStackScreenProps<RootStackParamList, 'StartPage'>;
+
 
 export default function StartPage({ navigation }: StartPageProps): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -77,8 +124,39 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
   const [isConnected, setIsConnected] = useState(true);
   const [showNetworkBanner, setShowNetworkBanner] = useState(false);
   const [showEmailLogin, setShowEmailLogin] = useState(false);
+  const [checkingOnboarding, setCheckingOnboarding] = useState(false);
 
   const { user, setUser, updateLastLogin } = useUser();
+
+  // Helper function to handle navigation after authentication
+  const handlePostAuthNavigation = async (userData: any) => {
+    if (!userData?.id) return;
+
+    console.log('🚀 Starting post-authentication navigation process...');
+    setCheckingOnboarding(true);
+
+    try {
+      // Check backend onboarding status and determine destination
+      const destination = await getNavigationDestination(userData);
+
+      console.log('🎯 Navigation destination determined:', destination);
+
+      // Small delay to ensure smooth transition
+      setTimeout(() => {
+        console.log('🚀 Navigating to:', destination);
+        navigation.navigate(destination as any);
+      }, 100);
+
+    } catch (error) {
+      console.error('❌ Error during post-auth navigation:', error);
+      // Fallback to biometrics page for new users
+      setTimeout(() => {
+        navigation.navigate('BiometricsPage');
+      }, 100);
+    } finally {
+      setCheckingOnboarding(false);
+    }
+  };
 
   // Reset navigation flag when user becomes null (after account deletion)
   useEffect(() => {
@@ -201,6 +279,16 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
           const url = new URL(event.url.split('#')[0]);
           const code = url.searchParams.get('code');
           const error = url.searchParams.get('error');
+          const success = url.searchParams.get('success');
+          const userDataParam = url.searchParams.get('userData');
+
+          console.log('🔗 Processing deep link URL:', {
+            hasCode: !!code,
+            hasError: !!error,
+            hasSuccess: !!success,
+            hasUserData: !!userDataParam,
+            fullUrl: url.toString()
+          });
 
           if (error) {
             Alert.alert('Authentication Error', `Google OAuth failed: ${error}`);
@@ -209,8 +297,50 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
             return;
           }
 
+          // Handle new backend OAuth format first (preferred)
+          if (success === 'true' && userDataParam) {
+            console.log('🎉 Processing backend OAuth success with user data');
+
+            try {
+              const userData = JSON.parse(decodeURIComponent(userDataParam));
+              console.log('👤 Parsed user data from URL:', {
+                id: userData.id,
+                email: userData.email,
+                fullName: userData.fullName,
+                authProvider: userData.authProvider,
+                avatarUri: userData.avatarUri ? 'present' : 'null'
+              });
+
+              console.log('🔄 Calling setUser with parsed data...');
+              await setUser(userData);
+              console.log('✅ setUser completed, calling updateLastLogin...');
+              await updateLastLogin();
+              console.log('✅ updateLastLogin completed, showing success toast...');
+
+              Toast.show({
+                type: 'success',
+                text1: 'Successfully signed in with Google!',
+              });
+
+              console.log('🎉 OAuth flow completed successfully, cleaning up...');
+              setLoading(false);
+              setProvider(null);
+
+              // Handle navigation directly instead of letting RootNavigator do it
+              await handlePostAuthNavigation(userData);
+              return; // Exit early - we've handled the authentication
+            } catch (parseError) {
+              console.error('❌ Error parsing user data from URL:', parseError);
+              Alert.alert('Authentication Error', 'Failed to process user data');
+              setLoading(false);
+              setProvider(null);
+              return;
+            }
+          }
+
+          // Fallback: Handle old code-based OAuth format
           if (code) {
-            console.log('🔵 Processing Google OAuth deep link with code:', code);
+            console.log('🔵 Processing legacy Google OAuth deep link with code:', code);
 
             // For now, create a basic user account since we have the OAuth code
             // In a full implementation, we'd exchange this for tokens and user info
@@ -232,7 +362,7 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
               avatarUri: undefined,
             };
 
-            console.log('👤 Creating Google user data from deep link:', userData.id);
+            console.log('👤 Creating Google user data from legacy deep link:', userData.id);
 
             await setUser(userData);
             await updateLastLogin();
@@ -245,42 +375,12 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
             setLoading(false);
             setProvider(null);
 
-            // Let RootNavigator handle navigation based on user onboarding status
+            // Handle navigation directly instead of letting RootNavigator do it
+            await handlePostAuthNavigation(userData);
           } else {
-            Alert.alert('Authentication Error', 'No authorization code received from Google');
+            Alert.alert('Authentication Error', 'No authorization code or user data received from Google');
             setLoading(false);
             setProvider(null);
-          }
-
-          // Check for new URL parameter format from backend
-          const success = url.searchParams.get('success');
-          const userDataParam = url.searchParams.get('userData');
-
-          if (success === 'true' && userDataParam) {
-            console.log('🎉 Processing backend OAuth success with user data');
-
-            try {
-              const userData = JSON.parse(decodeURIComponent(userDataParam));
-              console.log('👤 Parsed user data from URL:', userData);
-
-              await setUser(userData);
-              await updateLastLogin();
-
-              Toast.show({
-                type: 'success',
-                text1: 'Successfully signed in with Google!',
-              });
-
-              setLoading(false);
-              setProvider(null);
-
-              // Let RootNavigator handle navigation based on user onboarding status
-            } catch (parseError) {
-              console.error('❌ Error parsing user data from URL:', parseError);
-              Alert.alert('Authentication Error', 'Failed to process user data');
-              setLoading(false);
-              setProvider(null);
-            }
           }
         } catch (error) {
           Alert.alert('Authentication Error', `Failed to complete Google authentication: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -366,8 +466,8 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
             text1: 'Successfully signed in!',
           });
 
-          // Let RootNavigator handle navigation based on user onboarding status
-          // Don't navigate here to avoid conflicts with RootNavigator logic
+          // Handle navigation directly instead of letting RootNavigator do it
+          await handlePostAuthNavigation(userData);
         } else {
           console.error('❌ No user data received from Apple authentication');
           Alert.alert('Error', 'Authentication failed - no user data created');
@@ -421,8 +521,8 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
             text1: 'Successfully signed in with Google!',
           });
 
-          // Let RootNavigator handle navigation based on user onboarding status
-          // Don't navigate here to avoid conflicts with RootNavigator logic
+          // Handle navigation directly instead of letting RootNavigator do it
+          await handlePostAuthNavigation(result.userData);
         } else {
           console.error('❌ No user data received from Google authentication');
 
@@ -478,13 +578,23 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
           initiallyVisible={true}
         />
       )}
+
+      {/* Loading overlay for onboarding checks */}
+      {checkingOnboarding && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingContent}>
+            <ActivityIndicator size="large" color="#3AB75C" />
+            <Text style={styles.loadingText}>Setting up your account...</Text>
+          </View>
+        </View>
+      )}
       <View style={styles.header}>
         <HandyPayLogo width={80} height={80} />
       </View>
 
       <View style={styles.visualSection}>
         <View style={{ position: 'relative', alignItems: 'center' }}>
-          <PhoneTopSvg width={200} height={240} />
+          <IPhoneGreySvg width={230} height={230} />
           <View style={styles.qrCodeContainer}>
             <QRCodeSvg width={120} height={120} />
           </View>
@@ -567,6 +677,28 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     justifyContent: 'space-between'
   },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  loadingContent: {
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    fontFamily: 'DMSans-Medium',
+    color: '#6b7280',
+    textAlign: 'center',
+  },
   header: {
     alignItems: 'center',
     paddingTop: 16,
@@ -588,7 +720,7 @@ const styles = StyleSheet.create({
   },
   qrCodeContainer: {
     position: 'absolute',
-    top: 85,
+    top: 65,
     alignItems: 'center',
     justifyContent: 'center',
   },

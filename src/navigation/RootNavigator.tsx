@@ -5,6 +5,7 @@ import { useUser } from '../contexts/UserContext';
 import OnboardingScreen from '../screens/onboarding/OnboardingScreen';
 import StartPage from '../screens/onboarding/StartPage';
 import BiometricsPage from '../screens/onboarding/BiometricsPage';
+import NotificationsPage from '../screens/onboarding/NotificationsPage';
 import PrivacyPage from '../screens/onboarding/PrivacyPage';
 import FeaturesPage from '../screens/onboarding/FeaturesPage';
 import LegalPage from '../screens/onboarding/LegalPage';
@@ -23,6 +24,7 @@ export type RootStackParamList = {
   Onboarding: undefined;
   StartPage: undefined;
   BiometricsPage: undefined;
+  NotificationsPage: undefined;
   PrivacyPage: undefined;
   FeaturesPage: undefined;
   LegalPage: undefined;
@@ -194,19 +196,7 @@ function AuthRouter(): React.ReactElement {
     }
   }, [isLoading, user, checkingOnboarding]);
 
-  // Wait for all backend checks to complete before showing any screen
-  if (isLoading || checkingOnboarding) {
-    return (
-      <View style={{
-        flex: 1,
-        backgroundColor: '#ffffff',
-        justifyContent: 'center',
-        alignItems: 'center'
-      }}>
-        {/* Loading state while backend checks complete */}
-      </View>
-    );
-  }
+  // Remove white screen loading - let individual pages handle their own loading states
 
   return (
     <Stack.Navigator
@@ -216,6 +206,7 @@ function AuthRouter(): React.ReactElement {
       <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       <Stack.Screen name="StartPage" component={StartPage} />
       <Stack.Screen name="BiometricsPage" component={BiometricsPage} />
+      <Stack.Screen name="NotificationsPage" component={NotificationsPage} />
       <Stack.Screen name="PrivacyPage" component={PrivacyPage} />
       <Stack.Screen name="FeaturesPage" component={FeaturesPage} />
       <Stack.Screen name="LegalPage" component={LegalPage} />

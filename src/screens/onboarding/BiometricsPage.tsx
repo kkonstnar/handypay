@@ -126,7 +126,7 @@ export default function BiometricsPage({ navigation }: BiometricsPageProps): Rea
         console.log('✅ Face ID enabled in user profile');
         
         // Continue directly to the next page without alert
-        navigation.navigate('FeaturesPage');
+        navigation.navigate('NotificationsPage');
       } else {
         console.log('❌ Biometric authentication failed:', result.error);
         Alert.alert(
@@ -218,7 +218,7 @@ export default function BiometricsPage({ navigation }: BiometricsPageProps): Rea
 
       if (result.success) {
         console.log('✅ Passcode authentication successful');
-        navigation.navigate('FeaturesPage');
+        navigation.navigate('NotificationsPage');
       } else {
         console.log('❌ Passcode authentication failed:', result.error);
         Alert.alert(
@@ -309,7 +309,7 @@ export default function BiometricsPage({ navigation }: BiometricsPageProps): Rea
       <View style={styles.content}>
         {/* Illustration */}
         <View style={styles.illustrationContainer}>
-          <BiometricIllustrationSvg width={280} height={280} />
+          <BiometricIllustrationSvg width={310} height={240} />
         </View>
 
         {/* Text content */}
@@ -378,7 +378,7 @@ const styles = StyleSheet.create({
   },
   illustrationContainer: {
     alignItems: 'center',
-    marginBottom: 48,
+    marginBottom: 28,
   },
   textContent: {
     alignItems: 'center',

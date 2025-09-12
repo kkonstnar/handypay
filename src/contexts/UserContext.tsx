@@ -111,100 +111,134 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Load user data on app start
   useEffect(() => {
-    loadUserData();
-  }, []);
-
-  const loadUserData = async () => {
-    try {
-      console.log('🔍 Checking for authenticated session...');
-
-      // Check for Better Auth session first
-      const session = await authClient.getSession();
-      console.log('📋 Session check result:', session);
-
-      if (session.data?.user) {
-        console.log('✅ Found authenticated session:', session.data.user.id);
-
-        // Create user data from authenticated session
-        const userData: UserData = {
-          id: session.data.user.id,
-          email: session.data.user.email || null,
-          fullName: session.data.user.name || null,
-          firstName: session.data.user.name?.split(' ')[0] || null,
-          lastName: session.data.user.name?.split(' ').slice(1).join(' ') || null,
-          authProvider: session.data.user.image ? 'google' : 'apple',
-          appleUserId: session.data.user.appleUserId || null,
-          googleUserId: session.data.user.googleUserId || null,
-          stripeAccountId: session.data.user.stripeAccountId || null,
-          stripeOnboardingCompleted: session.data.user.stripeOnboardingCompleted || false,
-          memberSince: session.data.user.createdAt || new Date().toISOString(),
-          faceIdEnabled: session.data.user.faceIdEnabled || false,
-          safetyPinEnabled: session.data.user.safetyPinEnabled || false,
-          avatarUri: session.data.user.image || undefined,
-        };
-
-        // Store in AsyncStorage for offline access
-        await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
-        setUserState(userData);
-        console.log('✅ User authenticated and loaded from session');
-      } else {
-        // No authenticated session, try to load from AsyncStorage for offline mode
-        console.log('⚠️ No authenticated session found, checking local storage...');
-        const storedUserData = await AsyncStorage.getItem(USER_STORAGE_KEY);
-        if (storedUserData) {
-          const userData = JSON.parse(storedUserData);
-          setUserState(userData);
-          console.log('⚠️ Loaded user data from storage (session expired)');
-        } else {
-          console.log('ℹ️ No user data found');
-          setUserState(null);
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error loading user data:', error);
-
-      // Fallback: try to load from AsyncStorage
+    const initializeUser = async () => {
       try {
-        const storedUserData = await AsyncStorage.getItem(USER_STORAGE_KEY);
-        if (storedUserData) {
-          const userData = JSON.parse(storedUserData);
+        console.log('🔍 Checking for authenticated session...');
+
+        // Check for Better Auth session first
+        const session = await authClient.getSession();
+        console.log('📋 Session check result:', {
+          hasSession: !!session,
+          hasData: !!session?.data,
+          hasUser: !!session?.data?.user,
+          sessionKeys: session ? Object.keys(session) : [],
+          dataKeys: session?.data ? Object.keys(session.data) : [],
+          userKeys: session?.data?.user ? Object.keys(session.data.user) : []
+        });
+
+        if (session.data?.user) {
+          console.log('✅ Found authenticated session:', session.data.user.id);
+
+          // Create user data from authenticated session
+          const userData: UserData = {
+            id: session.data.user.id,
+            email: session.data.user.email || null,
+            fullName: session.data.user.name || null,
+            firstName: session.data.user.name?.split(' ')[0] || null,
+            lastName: session.data.user.name?.split(' ').slice(1).join(' ') || null,
+            authProvider: session.data.user.image ? 'google' : 'apple',
+            appleUserId: session.data.user.appleUserId || null,
+            googleUserId: session.data.user.googleUserId || null,
+            stripeAccountId: session.data.user.stripeAccountId || null,
+            stripeOnboardingCompleted: session.data.user.stripeOnboardingCompleted || false,
+            memberSince: session.data.user.createdAt || new Date().toISOString(),
+            faceIdEnabled: session.data.user.faceIdEnabled || false,
+            safetyPinEnabled: session.data.user.safetyPinEnabled || false,
+            avatarUri: session.data.user.image || undefined,
+          };
+
+          // Store in AsyncStorage for offline access
+          await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
           setUserState(userData);
-          console.log('⚠️ Failed to check session, loaded user data from storage');
+          console.log('✅ User authenticated and loaded from session');
         } else {
+          // No authenticated session, try to load from AsyncStorage for offline mode
+          console.log('⚠️ No authenticated session found, checking local storage...');
+          const storedUserData = await AsyncStorage.getItem(USER_STORAGE_KEY);
+
+          if (storedUserData) {
+            try {
+              const userData = JSON.parse(storedUserData);
+              console.log('👤 Loaded user data from AsyncStorage:', {
+                id: userData.id,
+                email: userData.email,
+                fullName: userData.fullName,
+                authProvider: userData.authProvider,
+                hasAvatar: !!userData.avatarUri
+              });
+              setUserState(userData);
+              console.log('✅ User data loaded from AsyncStorage');
+            } catch (parseError) {
+              console.error('❌ Error parsing stored user data:', parseError);
+              setUserState(null);
+              // Clear corrupted data
+              await AsyncStorage.removeItem(USER_STORAGE_KEY);
+            }
+          } else {
+            console.log('ℹ️ No user data found in storage');
+            setUserState(null);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error loading user data:', error);
+
+        // Fallback: try to load from AsyncStorage
+        try {
+          const storedUserData = await AsyncStorage.getItem(USER_STORAGE_KEY);
+          if (storedUserData) {
+            const userData = JSON.parse(storedUserData);
+            setUserState(userData);
+            console.log('✅ Fallback: loaded user data from AsyncStorage');
+          } else {
+            setUserState(null);
+          }
+        } catch (storageError) {
+          console.error('❌ Fallback: error loading from AsyncStorage:', storageError);
           setUserState(null);
         }
-      } catch (storageError) {
-        console.error('❌ Error loading from storage:', storageError);
-        setUserState(null);
+      } finally {
+        // Schedule the loading state update to avoid render-time state updates
+        setTimeout(() => {
+          setIsLoading(false);
+        }, 0);
       }
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    };
+
+    initializeUser();
+  }, []);
 
   const setUser = async (userData: UserData | null) => {
     try {
+      console.log('🔄 setUser called with:', userData ? {
+        id: userData.id,
+        email: userData.email,
+        fullName: userData.fullName,
+        authProvider: userData.authProvider,
+        hasAvatar: !!userData.avatarUri
+      } : 'null');
+
       if (userData) {
         // Save to local storage
         await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
         setUserState(userData);
-        console.log('User data saved locally:', userData);
+        console.log('✅ User data saved locally:', userData.id);
 
         // Also save to Supabase database
         try {
           const dbResult = await SupabaseUserService.upsertUser(userData);
           if (dbResult) {
-            console.log('User data synced to Supabase:', dbResult);
+            console.log('✅ User data synced to Supabase:', dbResult);
           } else {
-            console.warn('Failed to sync user data to Supabase');
+            console.warn('⚠️ Failed to sync user data to Supabase');
           }
         } catch (dbError) {
-          console.warn('Supabase sync error (continuing with local storage):', dbError);
+          console.warn('⚠️ Supabase sync error (continuing with local storage):', dbError);
         }
 
         // Also sync to backend database for Stripe account creation
         try {
           const backendSyncResult = await syncUserToBackend(userData);
+          console.log('🔄 Backend sync result:', backendSyncResult);
 
           // Handle case where provider is already linked to another account
           if (backendSyncResult && backendSyncResult.existingAccount && backendSyncResult.userId !== userData.id) {
@@ -222,19 +256,23 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           if (backendSyncResult) {
-            console.log('User data synced to backend database:', backendSyncResult);
+            console.log('✅ User data synced to backend database');
           } else {
-            console.warn('Failed to sync user data to backend');
+            console.warn('⚠️ Failed to sync user data to backend');
           }
         } catch (backendError) {
-          console.warn('Backend sync error (continuing with Supabase sync):', backendError);
+          console.warn('⚠️ Backend sync error (continuing with Supabase sync):', backendError);
         }
+
+        console.log('🎉 setUser completed successfully for user:', userData.id);
       } else {
         await AsyncStorage.removeItem(USER_STORAGE_KEY);
         setUserState(null);
+        console.log('🗑️ User data cleared');
       }
     } catch (error) {
-      console.error('Error saving user data:', error);
+      console.error('❌ Error saving user data:', error);
+      throw error; // Re-throw so caller knows it failed
     }
   };
 
