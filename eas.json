@@ -5,9 +5,26 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "development",
+      "distribution": "internal",
       "ios": {
         "resourceClass": "m-medium"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://handypay-backend.handypay.workers.dev",
+        "STRIPE_TEST_SECRET_KEY": "$STRIPE_TEST_SECRET_KEY",
+        "NEXT_PUBLIC_STRIPE_TEST_PUBLISHABLE_KEY": "$NEXT_PUBLIC_STRIPE_TEST_PUBLISHABLE_KEY",
+        "EXPO_PUBLIC_APPLE_CLIENT_ID": "com.handypay.mobile",
+        "APPLE_CLIENT_ID": "com.handypay.mobile",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "$EXPO_PUBLIC_GOOGLE_CLIENT_ID",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_SECRET": "$EXPO_PUBLIC_GOOGLE_CLIENT_SECRET"
+      }
+    },
+    "dev": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "resourceClass": "m-medium",
+        "buildConfiguration": "Debug"
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://handypay-backend.handypay.workers.dev",
