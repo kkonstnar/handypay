@@ -1,4 +1,6 @@
 import { Transaction, Payout, Balance, ApiResponse } from "../types";
+import { UserData } from "../contexts/UserContext";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // API Base URL - points to our backend
 const API_BASE_URL = "https://handypay-backend.handypay.workers.dev";
@@ -109,6 +111,23 @@ export class ApiService {
   }
 
   /**
+   * Get current authenticated user from AsyncStorage
+   */
+  private async getCurrentUser(): Promise<UserData | null> {
+    try {
+      const userDataString = await AsyncStorage.getItem("@handypay_user_data");
+      if (userDataString) {
+        const userData = JSON.parse(userDataString);
+        return userData;
+      }
+      return null;
+    } catch (error) {
+      console.error("❌ Error getting current user:", error);
+      return null;
+    }
+  }
+
+  /**
    * Generic API request handler
    */
   private async apiRequest<T>(
@@ -144,10 +163,22 @@ export class ApiService {
           Object.assign(requestHeaders, options.headers);
         }
 
-        const data = await authClient.$fetch(url, {
+        // Try to get current user from UserContext for header authentication
+        const userData = await this.getCurrentUser();
+        if (userData?.id) {
+          requestHeaders["X-User-ID"] = userData.id;
+          requestHeaders["X-User-Provider"] = userData.authProvider;
+          console.log("🔐 Adding user authentication headers:", {
+            userId: userData.id,
+            provider: userData.authProvider,
+          });
+        }
+
+        const data = await fetch(url, {
           method: options.method || "GET",
           headers: requestHeaders,
           body: options.body,
+          credentials: "include",
           ...options,
         });
 

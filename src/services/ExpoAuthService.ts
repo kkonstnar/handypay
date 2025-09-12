@@ -1,6 +1,7 @@
 import * as AppleAuthentication from "expo-apple-authentication";
 import * as WebBrowser from "expo-web-browser";
 import { Linking, Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { authClient, apiService } from "./api";
 
 // Backend API URL
@@ -69,26 +70,116 @@ export const useAppleAuth = () => {
         // Create user data from the credential
         console.log("🔐 Apple sign-in initiated, result:", authResult);
 
+        // Check if we have existing user data for this Apple user
+        let existingUserData = null;
+        let userStillExists = false;
+
+        try {
+          const keys = await AsyncStorage.getAllKeys();
+          const userKeys = keys.filter((key) =>
+            key.startsWith("@handypay_user_")
+          );
+
+          for (const key of userKeys) {
+            try {
+              const userDataStr = await AsyncStorage.getItem(key);
+              if (userDataStr) {
+                const userData = JSON.parse(userDataStr);
+                if (userData.appleUserId === credential.user) {
+                  existingUserData = userData;
+                  console.log(
+                    "✅ Found existing Apple user data:",
+                    userData.id
+                  );
+
+                  // Validate that this user still exists on the backend
+                  try {
+                    const response = await fetch(
+                      `${API_BASE_URL}/api/stripe/user-account/${userData.id}`
+                    );
+
+                    if (response.ok) {
+                      const backendData = await response.json();
+                      userStillExists =
+                        !!backendData &&
+                        backendData.stripe_account_id !== undefined;
+                      console.log("✅ Backend validation:", {
+                        userId: userData.id,
+                        userStillExists,
+                        hasStripeAccount: !!backendData?.stripe_account_id,
+                      });
+                    } else {
+                      userStillExists = false;
+                      console.log(
+                        "❌ Backend user not found or error:",
+                        response.status
+                      );
+                    }
+                  } catch (backendError) {
+                    userStillExists = false;
+                    console.warn("❌ Backend validation failed:", backendError);
+                  }
+
+                  // If user was deleted from backend, clear their local data
+                  if (!userStillExists) {
+                    console.log(
+                      "🗑️ User was deleted from backend, clearing local data"
+                    );
+                    await AsyncStorage.removeItem(key);
+                    existingUserData = null;
+                  }
+
+                  break;
+                }
+              }
+            } catch (error) {
+              console.warn("Error parsing user data for key:", key, error);
+            }
+          }
+        } catch (storageError) {
+          console.warn("Error checking for existing user data:", storageError);
+        }
+
+        // Use existing name if Apple doesn't provide it (privacy protection)
+        const appleName = credential.fullName
+          ? `${credential.fullName.givenName || ""} ${
+              credential.fullName.familyName || ""
+            }`.trim()
+          : null;
+
         const userData = {
           id: credential.user,
-          email: credential.email || null,
-          fullName: credential.fullName
-            ? `${credential.fullName.givenName || ""} ${
-                credential.fullName.familyName || ""
-              }`.trim()
-            : null,
-          firstName: credential.fullName?.givenName || null,
-          lastName: credential.fullName?.familyName || null,
+          email: credential.email || existingUserData?.email || null,
+          fullName: appleName || existingUserData?.fullName || null,
+          firstName:
+            credential.fullName?.givenName ||
+            existingUserData?.firstName ||
+            null,
+          lastName:
+            credential.fullName?.familyName ||
+            existingUserData?.lastName ||
+            null,
           authProvider: "apple" as const,
           appleUserId: credential.user,
           googleUserId: null,
-          stripeAccountId: null,
-          stripeOnboardingCompleted: false,
-          memberSince: new Date().toISOString(),
-          faceIdEnabled: false,
-          safetyPinEnabled: false,
-          avatarUri: undefined,
+          stripeAccountId: existingUserData?.stripeAccountId || null,
+          stripeOnboardingCompleted:
+            existingUserData?.stripeOnboardingCompleted || false,
+          memberSince:
+            existingUserData?.memberSince || new Date().toISOString(),
+          faceIdEnabled: existingUserData?.faceIdEnabled || false,
+          safetyPinEnabled: existingUserData?.safetyPinEnabled || false,
+          avatarUri: existingUserData?.avatarUri || undefined,
         };
+
+        console.log("👤 Final user data for Apple auth:", {
+          id: userData.id,
+          hasEmail: !!userData.email,
+          hasName: !!userData.fullName,
+          appleProvidedName: !!appleName,
+          usedExistingData: !!existingUserData && userStillExists,
+          treatedAsNewUser: !existingUserData || !userStillExists,
+        });
 
         return {
           type: "success",
@@ -202,6 +293,10 @@ export const useGoogleAuth = () => {
           try {
             const userData = JSON.parse(decodeURIComponent(userDataParam));
             console.log("👤 Parsed user data:", userData);
+
+            // For Google auth, we don't need to validate existing user data since
+            // the backend handles the user creation/validation. The userData
+            // returned from the backend OAuth flow is already validated.
 
             return {
               type: "success",
