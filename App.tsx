@@ -50,6 +50,16 @@ function AppContent(): React.ReactElement {
         console.log('🌐 GLOBAL: Detected OAuth callback URL:', event.url);
         // The individual screen handlers should process this
       }
+
+      // Check if this is a Stripe onboarding callback/completion
+      if (event.url.includes('handypay://stripe/callback') ||
+          event.url.includes('handypay://stripe/complete') ||
+          event.url.includes('handypay://stripe/success') ||
+          event.url.includes('handypay://stripe/error')) {
+        console.log('🌐 GLOBAL: Detected Stripe onboarding URL:', event.url);
+        // Store the Stripe deep link for processing by the onboarding screen
+        // This will be handled by the GetStartedPage component
+      }
     };
 
     const subscription = Linking.addEventListener('url', handleGlobalDeepLink);

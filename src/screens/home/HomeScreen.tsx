@@ -687,6 +687,11 @@ export default function HomeScreen(): React.ReactElement {
           // Clear local user data
           await clearUser();
 
+          // Clear any cached Stripe onboarding URLs
+          const { stripeOnboardingManager } = await import('../../services/StripeOnboardingService');
+          stripeOnboardingManager.reset();
+          console.log('🧹 Cleared cached Stripe onboarding URLs after account deletion');
+
           // Close modal and navigate to start page
           setShowAuthenticationMethodModal(false);
           navigation.reset({

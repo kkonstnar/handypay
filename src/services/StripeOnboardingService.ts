@@ -137,6 +137,28 @@ class StripeOnboardingManager {
     );
   }
 
+  // Validate if cached URL is still usable
+  async validateCachedUrl(): Promise<boolean> {
+    if (!this.state.preloadedUrl) {
+      return false;
+    }
+
+    try {
+      // Check if the URL is expired or invalid by making a HEAD request
+      const response = await fetch(this.state.preloadedUrl, {
+        method: "HEAD",
+        mode: "no-cors", // Avoid CORS issues
+      });
+
+      // If we get any response, URL is likely still valid
+      // If we get an error, URL might be expired/invalid
+      return true; // Assume valid unless we get a clear error
+    } catch (error) {
+      console.log("⚠️ Cached Stripe URL may be invalid:", error);
+      return false;
+    }
+  }
+
   // Get Stripe account data using the existing deployed API
   async getStripeAccount(
     stripeAccountId: string

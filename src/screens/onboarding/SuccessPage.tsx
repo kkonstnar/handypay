@@ -24,12 +24,15 @@ export default function SuccessPage({ navigation }: SuccessPageProps): React.Rea
   } | null>(null);
 
   useEffect(() => {
-    checkStripeAccountStatus();
+    // Add a small delay to allow manual updates from GetStartedPage to complete
+    const checkDelay = setTimeout(() => {
+      checkStripeAccountStatus();
+    }, 500); // Wait 500ms for manual updates to complete
 
-    // Safety timeout: If verification takes too long, show success anyway
+    // Reduced safety timeout: Only wait 3 seconds since manual updates should be immediate now
     const safetyTimeout = setTimeout(() => {
       if (isCheckingStatus) {
-        console.log('⏰ Safety timeout reached - showing success state');
+        console.log('⏰ Safety timeout reached - showing success state (reduced from 10s to 3s)');
         setIsCheckingStatus(false);
         // Set a fallback success state
         setAccountStatus({
@@ -39,9 +42,12 @@ export default function SuccessPage({ navigation }: SuccessPageProps): React.Rea
           details_submitted: true,
         });
       }
-    }, 10000); // 10 seconds timeout
+    }, 3500); // 3.5 seconds total (500ms delay + 3s timeout)
 
-    return () => clearTimeout(safetyTimeout);
+    return () => {
+      clearTimeout(checkDelay);
+      clearTimeout(safetyTimeout);
+    };
   }, []);
 
   const checkStripeAccountStatus = async (retryCount = 0) => {

@@ -1,0 +1,169 @@
+# Expo Commands Reference Guide
+# Useful commands for React Native/Expo development
+
+## 🚀 Development Commands
+
+### Start Development Server
+npx expo start
+# Starts the Expo development server with hot reloading
+# Opens Metro bundler in browser for QR code scanning
+
+npx expo start --tunnel
+# Starts with tunnel for testing on devices without same network
+
+npx expo start --clear
+# Clears Metro cache and restarts (useful for cache issues)
+
+### Run on Specific Platforms
+npx expo run:ios
+# Builds and runs app on iOS simulator
+
+npx expo run:android
+# Builds and runs app on Android emulator
+
+## 📦 Build & Export Commands
+
+### Production Export
+npx expo export
+# Exports app for all platforms (iOS, Android, Web)
+
+npx expo export --platform ios
+# Exports only for iOS platform
+
+npx expo export --platform android
+# Exports only for Android platform
+
+### Build for EAS (Expo Application Services)
+npx eas build --platform ios
+# Builds iOS app for TestFlight/App Store
+
+npx eas build --platform android
+# Builds Android app for Google Play
+
+npx eas build --platform all
+# Builds for both platforms
+
+## 🔧 Utility Commands
+
+### Clear Caches
+npx expo r -c
+# Clears Metro bundler cache
+
+npx expo install --fix
+# Fixes dependency issues and reinstalls packages
+
+### Info & Diagnostics
+npx expo doctor
+# Diagnoses potential issues with project setup
+
+npx expo config
+# Shows current Expo configuration
+
+npx expo info
+# Shows system info and Expo version
+
+## 📱 Device Testing
+
+### QR Code & URLs
+npx expo start --web
+# Opens app in web browser
+
+npx expo start --host lan
+# Use LAN IP for device testing on same network
+
+### Prebuild Commands
+npx expo prebuild
+# Generates native iOS/Android projects (for custom native code)
+
+npx expo prebuild --clean
+# Cleans and regenerates native projects
+
+## 🔐 Authentication & Accounts
+
+### Login/Logout
+npx expo login
+# Login to Expo account
+
+npx expo logout
+# Logout from Expo account
+
+npx expo whoami
+# Check which account you're logged in as
+
+## 📊 EAS (Expo Application Services) Commands
+
+### EAS Build Configuration
+npx eas build:configure
+# Set up EAS Build configuration
+
+npx eas build:list
+# List all your builds
+
+npx eas build:view [buildId]
+# View details of a specific build
+
+### EAS Submit (App Store submissions)
+npx eas submit --platform ios
+# Submit iOS build to TestFlight
+
+npx eas submit --platform android
+# Submit Android build to Google Play
+
+## 🏗️ Project Management
+
+### Create New Project
+npx create-expo-app MyApp
+# Create new Expo project
+
+npx create-expo-app MyApp --template
+# Create with specific template
+
+### Upgrade Commands
+npx expo upgrade
+# Upgrade Expo SDK and dependencies
+
+npx expo install --fix
+# Fix and update dependencies
+
+## 📋 Common Workflows
+
+### Daily Development
+1. npx expo start                    # Start dev server
+2. Make code changes                 # Hot reload automatically
+3. npx expo export --platform ios    # Export for testing
+4. Test on device/simulator
+
+### Production Build
+1. npx expo export --platform ios    # Create production bundle
+2. npx eas build --platform ios      # Build for App Store
+3. npx eas submit --platform ios     # Submit to TestFlight
+
+### Troubleshooting
+1. npx expo r -c                     # Clear cache
+2. npx expo start --clear            # Fresh start
+3. npx expo doctor                   # Diagnose issues
+4. Delete node_modules & reinstall   # Nuclear option
+
+## ⚡ Quick Reference
+
+# Most Used Commands:
+npx expo start              # Development
+npx expo export             # Production build
+npx eas build               # App Store build
+npx expo r -c              # Clear cache
+
+# Platform Specific:
+--platform ios             # iOS only
+--platform android         # Android only
+--platform all             # Both platforms
+
+# Flags:
+--clear                    # Clear cache
+--tunnel                   # Use tunnel
+--web                      # Web browser
+--fix                      # Fix dependencies
+
+## 📚 Resources
+- Expo Docs: https://docs.expo.dev/
+- EAS Docs: https://docs.expo.dev/eas/
+- React Native Docs: https://reactnative.dev/docs/getting-started
