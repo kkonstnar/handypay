@@ -14,9 +14,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.handypay.mobile",
-      "buildNumber": "5",
+      "buildNumber": "8",
       "entitlements": {
-        "com.apple.developer.applesignin": ["Default"]
+        "com.apple.developer.applesignin": ["Default"],
+        "aps-environment": "production"
       },
       "infoPlist": {
         "CFBundleDisplayName": "HandyPay",
@@ -24,6 +25,7 @@
         "NSBiometricUsageDescription": "HandyPay uses biometric authentication (Face ID or Touch ID) to secure your account and transactions.",
         "NSCameraUsageDescription": "HandyPay needs camera access for QR code scanning to process payments.",
         "NSPhotoLibraryUsageDescription": "HandyPay needs photo library access to save transaction receipts.",
+        "NSUserNotificationsUsageDescription": "HandyPay uses notifications to alert you about payments, account status changes, and important updates.",
         "CFBundleURLTypes": [
           {
             "CFBundleURLName": "handypay-oauth",
@@ -35,6 +37,13 @@
             ]
           }
         ]
+      },
+      "notification": {
+        "icon": "./assets/notification-icon.png",
+        "color": "#3AB75C",
+        "iosDisplayInForeground": true,
+        "androidMode": "default",
+        "androidCollapsedTitle": "#{unread_notifications} new interactions"
       }
     },
     "android": {
@@ -76,6 +85,7 @@
           "faceIDPermission": "HandyPay uses Face ID for secure biometric authentication to protect your account and transactions."
         }
       ],
+      "expo-notifications",
       "expo-dev-client"
     ],
     "experiments": {

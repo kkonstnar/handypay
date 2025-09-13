@@ -64,6 +64,8 @@
     <string>HandyPay uses Face ID for secure biometric authentication to protect your account and transactions.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>HandyPay needs photo library access to save transaction receipts.</string>
+    <key>NSUserNotificationsUsageDescription</key>
+    <string>HandyPay uses notifications to alert you about payments, account status changes, and important updates.</string>
     <key>UILaunchStoryboardName</key>
     <string>SplashScreen</string>
     <key>UIRequiredDeviceCapabilities</key>

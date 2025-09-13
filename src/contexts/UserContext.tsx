@@ -79,6 +79,11 @@ export interface UserData {
   faceIdEnabled: boolean;
   safetyPinEnabled: boolean;
   avatarUri?: string;
+
+  // Ban status (for real-time ban detection)
+  isBanned?: boolean;
+  banReason?: string;
+  banType?: string;
 }
 
 interface UserContextType {
@@ -97,6 +102,9 @@ interface UserContextType {
   cacheAvatar: (uri: string) => Promise<void>;
   getCachedAvatar: () => string | null;
   avatarLoading: boolean;
+  // Ban status checking
+  checkBanStatus: () => Promise<void>;
+  isBanned: boolean;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -206,6 +214,58 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     initializeUser();
   }, []);
+
+  // Ban status monitoring via push notifications - no more polling!
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const handleBanNotification = async (banDetails: any) => {
+      try {
+        console.log('🚫 Received ban notification via push:', banDetails);
+
+        // Update user state immediately
+        const updatedUser = {
+          ...user,
+          isBanned: true,
+          banReason: banDetails?.reason,
+          banType: banDetails?.type,
+        };
+
+        setUserState(updatedUser);
+        await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
+
+        // Show the ban notification
+        const { showBanNotification } = await import('../utils/banNotification');
+        showBanNotification(banDetails);
+
+      } catch (error) {
+        console.error('❌ Error handling ban notification:', error);
+      }
+    };
+
+    // Import notification service and set up listener
+    const setupNotificationListener = async () => {
+      try {
+        const { NotificationService } = await import('../services/notificationService');
+        NotificationService.setupBanNotificationListener(handleBanNotification);
+        console.log('🔔 Ban notification listener set up');
+      } catch (error) {
+        console.error('❌ Error setting up ban notification listener:', error);
+      }
+    };
+
+    setupNotificationListener();
+
+    // Cleanup function
+    return () => {
+      try {
+        const { NotificationService } = require('../services/notificationService');
+        NotificationService.cleanupBanNotificationListeners();
+      } catch (error) {
+        console.error('❌ Error cleaning up ban notification listeners:', error);
+      }
+    };
+  }, [user?.id]);
 
   const setUser = async (userData: UserData | null) => {
     try {
@@ -462,6 +522,27 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     cacheAvatar,
     getCachedAvatar,
     avatarLoading,
+    // Ban status
+    checkBanStatus: async () => {
+      try {
+        if (!user?.id) return;
+        console.log('🔍 Manual ban status check for user:', user.id);
+        const response = await fetch(`https://handypay-backend.handypay.workers.dev/api/users/ban-status/${user.id}`);
+        if (response.ok) {
+          const banData = await response.json();
+          if (banData.isBanned && !user.isBanned) {
+            const updatedUser = { ...user, ...banData };
+            setUserState(updatedUser);
+            await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
+            const { showBanNotification } = await import('../utils/banNotification');
+            showBanNotification(banData.banDetails);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error in manual ban check:', error);
+      }
+    },
+    isBanned: user?.isBanned || false,
   };
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

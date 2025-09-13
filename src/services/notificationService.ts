@@ -294,6 +294,49 @@ export class NotificationService {
   }
 
   /**
+   * Set up notification listener for ban status updates
+   */
+  static setupBanNotificationListener(
+    onBanNotification: (banDetails: any) => void
+  ): void {
+    const subscription = Notifications.addNotificationReceivedListener(
+      (notification) => {
+        const data = notification.request.content.data;
+
+        if (data?.type === "account_banned") {
+          console.log("🚫 Received ban notification:", data);
+          onBanNotification(data.banDetails);
+        }
+      }
+    );
+
+    // Also listen for notifications when app is in background
+    const responseSubscription =
+      Notifications.addNotificationResponseReceivedListener((response) => {
+        const data = response.notification.request.content.data;
+
+        if (data?.type === "account_banned") {
+          console.log("🚫 User tapped ban notification:", data);
+          onBanNotification(data.banDetails);
+        }
+      });
+
+    // Store subscriptions for cleanup if needed
+    (this as any)._banSubscriptions = [subscription, responseSubscription];
+  }
+
+  /**
+   * Clean up ban notification listeners
+   */
+  static cleanupBanNotificationListeners(): void {
+    const subscriptions = (this as any)._banSubscriptions;
+    if (subscriptions) {
+      subscriptions.forEach((subscription: any) => subscription.remove());
+      (this as any)._banSubscriptions = null;
+    }
+  }
+
+  /**
    * Initialize the notification service (call this in App.tsx or main entry point)
    */
   static async initialize(): Promise<void> {

@@ -15,6 +15,8 @@ import Toast from 'react-native-toast-message';
 import toastConfig from './src/components/ui/ToastConfig';
 import { Linking } from 'react-native';
 import { NotificationService } from './src/services/notificationService';
+import { useBanProtection } from './src/hooks/useBanProtection';
+import { BannedUserOverlay } from './src/components/BannedUserOverlay';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -23,6 +25,34 @@ SplashScreen.preventAutoHideAsync();
 function AppContent(): React.ReactElement {
   const { isLoading: userLoading } = useUser();
   const [showSplash, setShowSplash] = useState(true);
+
+  // Global ban protection
+  const { isBanned, showBanOverlay, banDetails, user, onContactSupport } = useBanProtection({
+    showOverlay: true,
+    onContactSupport: () => {
+      // Could navigate to support screen or open email
+      console.log('📞 Contact support from ban overlay');
+    },
+  });
+
+  // Set up ban notification listener
+  useEffect(() => {
+    if (user?.id) {
+      const { NotificationService } = require('./src/services/notificationService');
+
+      const handleBanNotification = (notificationBanDetails: any) => {
+        console.log('🚫 Received ban notification:', notificationBanDetails);
+        // The useBanProtection hook will handle the state updates
+        // This is just for logging additional context
+      };
+
+      NotificationService.setupBanNotificationListener(handleBanNotification);
+
+      return () => {
+        NotificationService.cleanupBanNotificationListeners();
+      };
+    }
+  }, [user?.id]);
 
   const onLayoutRootView = useCallback(async () => {
     // Don't hide Expo splash screen here - let the custom splash handle it
@@ -103,6 +133,12 @@ function AppContent(): React.ReactElement {
         </TransactionProvider>
       </NetworkProvider>
       <Toast config={toastConfig} />
+      {showBanOverlay && user?.isBanned && (
+        <BannedUserOverlay
+          banDetails={banDetails || undefined}
+          onContactSupport={onContactSupport}
+        />
+      )}
     </GestureHandlerRootView>
   );
 }
