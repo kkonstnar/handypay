@@ -2,7 +2,7 @@ import Toast from "react-native-toast-message";
 import * as Haptics from "expo-haptics";
 
 export const showBanNotification = (banDetails: any) => {
-  console.log("🚫 Showing ban notification:", banDetails);
+  console.log("Showing ban notification:", banDetails);
 
   // Strong haptic feedback for ban notification
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -26,7 +26,7 @@ export const showBanNotification = (banDetails: any) => {
 };
 
 export const showUnbanNotification = () => {
-  console.log("✅ Showing unban notification");
+  console.log("Showing unban notification");
 
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
