@@ -81,6 +81,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
   const [pollingAttempts, setPollingAttempts] = useState(0);
   const [maxPollingAttempts] = useState(30); // Poll for up to 30 seconds
   const [onboardingCompleted, setOnboardingCompleted] = useState(false);
+  const [processingCompletion, setProcessingCompletion] = useState(false); // New state for processing phase
 
   // Check for incomplete onboarding on mount
   useEffect(() => {
@@ -114,6 +115,10 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
           event.url.includes('handypay://stripe/success')) {
         console.log('✅ Stripe onboarding completion detected');
 
+        // Set processing completion state for better UI
+        setProcessingCompletion(true);
+        setLoading(true);
+
         // Start polling for onboarding status
         if (isOnboardingInProgress) {
           startPollingOnboardingStatus();
@@ -125,6 +130,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         console.log('❌ Stripe onboarding error detected');
         setIsOnboardingInProgress(false);
         setLoading(false);
+        setProcessingCompletion(false); // Clear processing state on error
         Toast.show({
           type: 'error',
           text1: 'Onboarding Failed',
@@ -173,6 +179,8 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
           setPollingInterval(null);
           setIsOnboardingInProgress(false);
           setLoading(false);
+          setProcessingCompletion(false); // Clear processing state on timeout
+          setHasIncompleteOnboarding(true); // Mark as incomplete so they can try again
           Toast.show({
             type: 'success',
             text1: 'Still Processing',
@@ -208,6 +216,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
 
         setIsOnboardingInProgress(false);
         setLoading(false);
+        setProcessingCompletion(false); // Clear processing state
         setOnboardingCompleted(true); // Mark as completed for UI updates
         navigation.replace('SuccessPage');
 
@@ -304,6 +313,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
 
     setIsOnboardingInProgress(false);
     setLoading(false);
+    setProcessingCompletion(false); // Clear processing state
     setHasIncompleteOnboarding(true); // Mark as incomplete so button shows "Continue Onboarding"
     Toast.show({
       type: 'success',
@@ -562,7 +572,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
       <TouchableOpacity
         style={[
           styles.card,
-          (loading || onboardingCompleted) && styles.disabledCard
+          (loading || onboardingCompleted || processingCompletion) && styles.disabledCard
         ]}
         onPress={() => {
           if (onboardingCompleted) {
@@ -572,24 +582,24 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
               text1: 'Already Completed!',
               text2: 'Your onboarding is complete and ready to accept payments.'
             });
-          } else {
+          } else if (!processingCompletion) {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             handleStripeOnboarding();
           }
         }}
-        disabled={loading || onboardingCompleted}
-        activeOpacity={onboardingCompleted ? 1 : 0.8}
+        disabled={loading || onboardingCompleted || processingCompletion}
+        activeOpacity={(onboardingCompleted || processingCompletion) ? 1 : 0.8}
       >
         <Row
-          label="Complete Identify verification"
+          label="Complete identity verification"
           icon={<UserScanSvg width={24} height={24} />}
-          completed={onboardingCompleted}
+          completed={onboardingCompleted || processingCompletion}
         />
         <View style={styles.separator} />
         <Row
           label="Link bank account"
           icon={<BankSvg width={24} height={24} />}
-          completed={onboardingCompleted}
+          completed={onboardingCompleted || processingCompletion}
         />
 
       </TouchableOpacity>
@@ -601,15 +611,15 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
 
       <View style={styles.bottomButtons}>
         <Button
-          style={[styles.primaryBtn, loading && styles.disabledButton]}
-          onPress={isOnboardingInProgress ? cancelOnboarding : handleStripeOnboarding}
-          disabled={loading}
+          style={[styles.primaryBtn, (loading || processingCompletion) && styles.disabledButton]}
+          onPress={processingCompletion ? undefined : (isOnboardingInProgress ? cancelOnboarding : handleStripeOnboarding)}
+          disabled={loading || processingCompletion}
         >
-          {loading ? (
+          {(loading || processingCompletion) ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color="#ffffff" />
               <Text style={[styles.primaryBtnText, { marginLeft: 8 }]}>
-                {hasIncompleteOnboarding ? "Continuing onboarding..." : currentStripeAccountId ? "Verifying your account..." : "Starting onboarding..."}
+                {processingCompletion ? "Completing onboarding..." : hasIncompleteOnboarding ? "Continuing onboarding..." : currentStripeAccountId ? "Verifying your account..." : "Starting onboarding..."}
               </Text>
             </View>
           ) : isOnboardingInProgress ? (
@@ -624,9 +634,9 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         </Button>
         <Button
           variant="secondary"
-          style={[styles.secondaryBtn, loading && styles.disabledButton]}
+          style={[styles.secondaryBtn, (loading || processingCompletion) && styles.disabledButton]}
           onPress={() => navigation.replace('HomeTabs')}
-          disabled={loading}
+          disabled={loading || processingCompletion}
         >
           Skip for now
         </Button>
