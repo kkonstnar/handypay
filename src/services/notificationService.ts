@@ -255,9 +255,6 @@ export class NotificationService {
       // Schedule test notification
       await this.scheduleTestNotification();
 
-      // Also send immediate notification for testing
-      await this.scheduleImmediateNotification();
-
       return { success: true, pushToken: pushToken || undefined };
     } catch (error) {
       console.error("❌ Error setting up notifications:", error);
