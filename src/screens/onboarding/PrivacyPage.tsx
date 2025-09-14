@@ -137,7 +137,7 @@ export default function PrivacyPage({ navigation }: PrivacyPageProps): React.Rea
 
           <Text style={styles.sectionTitle}>15. Contact Us</Text>
           <Text style={styles.bodyText}>
-            If you have questions about this Privacy Policy or our data practices, please contact us at privacy@handypay.com or support@handypay.org.
+            If you have questions about this Privacy Policy or our data practices, please contact us at privacy@handypay.com or support@tryhandypay.org.
           </Text>
         </View>
       </ScrollView>

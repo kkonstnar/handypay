@@ -111,7 +111,7 @@ export default function TermsContentPage({ navigation }: TermsContentPageProps):
 
           <Text style={styles.sectionTitle}>13. Contact Information</Text>
           <Text style={styles.bodyText}>
-            For questions about these Terms or our services, please contact us at support@handypay.com or support@handypay.org.
+            For questions about these Terms or our services, please contact us at support@tryhandypay.com or support@tryhandypay.org.
           </Text>
         </View>
       </ScrollView>

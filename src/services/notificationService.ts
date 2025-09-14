@@ -1,10 +1,18 @@
 import * as Notifications from "expo-notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
+import Toast from "react-native-toast-message";
 
 // Notification keys for AsyncStorage
 const NOTIFICATIONS_ENABLED_KEY = "@handypay_notifications_enabled";
 const PUSH_TOKEN_KEY = "@handypay_push_token";
+
+// WebSocket connection
+let websocket: WebSocket | null = null;
+let reconnectTimeout: NodeJS.Timeout | null = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_INTERVAL = 3000; // 3 seconds
 
 export class NotificationService {
   /**
@@ -330,6 +338,148 @@ export class NotificationService {
       subscriptions.forEach((subscription: any) => subscription.remove());
       (this as any)._banSubscriptions = null;
     }
+  }
+
+  /**
+   * Connect to WebSocket for real-time updates
+   */
+  static connectWebSocket(userId: string): void {
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+      console.log("🔗 WebSocket already connected");
+      return;
+    }
+
+    try {
+      // Use secure WebSocket connection
+      const wsUrl = `wss://handypay-backend.handypay.workers.dev/ws?userId=${userId}`;
+      console.log("🔗 Connecting to WebSocket:", wsUrl);
+
+      websocket = new WebSocket(wsUrl);
+
+      websocket.onopen = () => {
+        console.log("✅ WebSocket connected successfully");
+        reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+      };
+
+      websocket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log("📨 WebSocket message received:", data);
+
+          this.handleWebSocketMessage(data);
+        } catch (error) {
+          console.error("❌ Error parsing WebSocket message:", error);
+        }
+      };
+
+      websocket.onclose = (event) => {
+        console.log("🔌 WebSocket disconnected:", event.code, event.reason);
+
+        // Attempt to reconnect if not a normal closure
+        if (event.code !== 1000 && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+          console.log(
+            `🔄 Attempting to reconnect (${
+              reconnectAttempts + 1
+            }/${MAX_RECONNECT_ATTEMPTS})`
+          );
+          reconnectTimeout = setTimeout(() => {
+            reconnectAttempts++;
+            this.connectWebSocket(userId);
+          }, RECONNECT_INTERVAL);
+        }
+      };
+
+      websocket.onerror = (error) => {
+        console.error("❌ WebSocket error:", error);
+      };
+    } catch (error) {
+      console.error("❌ Failed to create WebSocket connection:", error);
+    }
+  }
+
+  /**
+   * Disconnect WebSocket
+   */
+  static disconnectWebSocket(): void {
+    console.log("🔌 Disconnecting WebSocket...");
+
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
+      reconnectTimeout = null;
+    }
+
+    if (websocket) {
+      websocket.close(1000, "Client disconnecting");
+      websocket = null;
+    }
+
+    reconnectAttempts = 0;
+  }
+
+  /**
+   * Handle incoming WebSocket messages
+   */
+  static handleWebSocketMessage(data: any): void {
+    switch (data.type) {
+      case "onboarding_complete":
+        console.log("🎉 Onboarding completed via WebSocket!");
+        Toast.show({
+          type: "success",
+          text1: "Onboarding Completed!",
+          text2: "Your account is now ready to accept payments.",
+        });
+        // Trigger onboarding completion in the UI
+        this.notifyOnboardingComplete();
+        break;
+
+      case "onboarding_failed":
+        console.log("❌ Onboarding failed via WebSocket");
+        Toast.show({
+          type: "error",
+          text1: "Onboarding Failed",
+          text2:
+            data.message || "There was an error with your Stripe onboarding.",
+        });
+        break;
+
+      case "payment_received":
+        console.log("💰 Payment received via WebSocket");
+        Toast.show({
+          type: "success",
+          text1: "Payment Received!",
+          text2: `You received ${data.amount} ${data.currency}`,
+        });
+        break;
+
+      default:
+        console.log("📨 Unknown WebSocket message type:", data.type);
+    }
+  }
+
+  /**
+   * Notify listeners about onboarding completion
+   */
+  static notifyOnboardingComplete(): void {
+    // Emit custom event that components can listen to
+    if (typeof window !== "undefined" && (window as any).Event) {
+      const event = new CustomEvent("onboardingComplete");
+      window.dispatchEvent(event);
+    }
+  }
+
+  /**
+   * Set up onboarding completion listener
+   */
+  static onOnboardingComplete(callback: () => void): () => void {
+    if (typeof window === "undefined") return () => {};
+
+    const handler = () => callback();
+    window.addEventListener("onboardingComplete", handler);
+
+    // Return cleanup function
+    return () => {
+      window.removeEventListener("onboardingComplete", handler);
+    };
   }
 
   /**

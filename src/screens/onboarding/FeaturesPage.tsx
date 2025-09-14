@@ -61,11 +61,16 @@ export default function FeaturesPage({ navigation }: FeaturesPageProps): React.R
           {/* Features list */}
           <View style={styles.featuresBox}>
             <FeatureItem title="No Downtime" description="Accept payments anytime, anywhere, no delays, no waiting." />
-            
-            <FeatureItem title= "No Monthly fees" description="Keep more of what you earn with no subscription or maintenance fees." />
-            
+
+            <FeatureItem title= "No Maintenance fees" description="Keep more of what you earn with no subscription or maintenance fees." />
+
             <FeatureItem title="No Taxes" description="We don't collect or withhold taxes from your payments." />
           </View>
+
+          {/* Fee disclosure */}
+          <Text style={styles.feeDisclosure}>
+            We only charge 5% per transaction. You can choose to pay the fees yourself or have your customers pay them.
+          </Text>
         </View>
       </ScrollView>
 
@@ -120,6 +125,15 @@ const styles = StyleSheet.create({
   fixedBottom: { position: 'absolute', left: 24, right: 24, bottom: 56 },
   cta: { height: 48, borderRadius: 24, backgroundColor: '#3AB75C', borderColor: '#3AB75C' },
   ctaText: { color: '#ffffff', fontSize: 16, fontWeight: '500', fontFamily: 'DMSans-Medium' },
+  feeDisclosure: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'left',
+    marginTop: 16,
+    lineHeight: 20,
+    fontFamily: 'DMSans-Medium',
+    paddingHorizontal: 8
+  },
 });
 
 

@@ -30,7 +30,7 @@
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = HandyPay/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* HandyPay-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "HandyPay-Bridging-Header.h"; path = "HandyPay/HandyPay-Bridging-Header.h"; sourceTree = "<group>"; };
-		F11748452D0722830044C1D9 /* HandyPay.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = "HandyPay.entitlements"; path = "HandyPay/HandyPay.entitlements"; sourceTree = "<group>"; };
+		F11748452D0722830044C1D9 /* HandyPay.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = HandyPay.entitlements; path = HandyPay/HandyPay.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */

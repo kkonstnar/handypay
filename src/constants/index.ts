@@ -8,7 +8,7 @@ export const API_CONFIG = {
 export const APP_CONFIG = {
   NAME: "HandyPay",
   VERSION: "3.3456.10000",
-  SUPPORT_EMAIL: "support@handypay.com",
+  SUPPORT_EMAIL: "support@tryhandypay.com",
   SUPPORT_PHONE: "1-800-HANDYPAY",
 } as const;
 

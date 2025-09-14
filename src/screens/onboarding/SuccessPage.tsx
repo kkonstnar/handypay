@@ -24,15 +24,13 @@ export default function SuccessPage({ navigation }: SuccessPageProps): React.Rea
   } | null>(null);
 
   useEffect(() => {
-    // Add a small delay to allow manual updates from GetStartedPage to complete
-    const checkDelay = setTimeout(() => {
-      checkStripeAccountStatus();
-    }, 500); // Wait 500ms for manual updates to complete
+    // Check status immediately without delay to avoid duplicate calls
+    checkStripeAccountStatus();
 
-    // Reduced safety timeout: Only wait 3 seconds since manual updates should be immediate now
+    // Reduced safety timeout: Only wait 2 seconds for faster UX
     const safetyTimeout = setTimeout(() => {
       if (isCheckingStatus) {
-        console.log('⏰ Safety timeout reached - showing success state (reduced from 10s to 3s)');
+        console.log('⏰ Safety timeout reached - showing success state');
         setIsCheckingStatus(false);
         // Set a fallback success state
         setAccountStatus({
@@ -42,142 +40,103 @@ export default function SuccessPage({ navigation }: SuccessPageProps): React.Rea
           details_submitted: true,
         });
       }
-    }, 3500); // 3.5 seconds total (500ms delay + 3s timeout)
+    }, 2000); // 2 seconds total
 
     return () => {
-      clearTimeout(checkDelay);
       clearTimeout(safetyTimeout);
     };
   }, []);
 
-  const checkStripeAccountStatus = async (retryCount = 0) => {
+  const checkStripeAccountStatus = async () => {
     if (!user?.id) {
       setIsCheckingStatus(false);
       return;
     }
 
     try {
-      console.log(`🔍 Checking Stripe account status for user: ${user.id} (attempt ${retryCount + 1})`);
+      console.log(`🔍 Checking Stripe account status for user: ${user.id}`);
 
-      // FIRST: Check backend API (this is where webhook updates happen)
-      console.log('🔍 Checking backend API first (webhook source of truth)...');
+      // Single comprehensive API call to get both account data and status
       const backendResponse = await fetch(
         `https://handypay-backend.handypay.workers.dev/api/stripe/user-account/${user.id}`
       );
 
-      if (backendResponse.ok) {
-        const backendData = await backendResponse.json();
-        console.log('📊 Backend data:', backendData);
-        console.log('🔍 Looking for stripe_onboarding_completed:', backendData.stripe_onboarding_completed);
-
-        if (backendData.stripe_account_id && backendData.stripe_onboarding_completed) {
-          console.log('✅ Found completed onboarding in backend:', backendData.stripe_account_id);
-
-          // Get the account status from Stripe via backend
-          const statusResponse = await fetch(
-            `https://handypay-backend.handypay.workers.dev/api/stripe/account-status`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ stripeAccountId: backendData.stripe_account_id }),
-            }
-          );
-
-          if (statusResponse.ok) {
-            const statusData = await statusResponse.json();
-            console.log('📊 Account status from backend:', statusData);
-
-            setAccountStatus({
-              id: backendData.stripe_account_id,
-              charges_enabled: statusData.accountStatus?.charges_enabled || true, // Assume true for completed onboarding
-              payouts_enabled: statusData.accountStatus?.payouts_enabled || true,
-              details_submitted: statusData.accountStatus?.details_submitted || true,
-              requirements: statusData.accountStatus?.requirements,
-            });
-          } else {
-            // Fallback: Set success state even if account status fails
-            setAccountStatus({
-              id: backendData.stripe_account_id,
-              charges_enabled: true,
-              payouts_enabled: true,
-              details_submitted: true,
-            });
-          }
-          setIsCheckingStatus(false);
-          return;
-        }
+      if (!backendResponse.ok) {
+        console.log('❌ Failed to fetch user account data');
+        setIsCheckingStatus(false);
+        return;
       }
 
-      // FALLBACK: Check Supabase (might be stale)
-      const userFromDb = await SupabaseUserService.getUser(user.id);
+      const backendData = await backendResponse.json();
+      console.log('📊 Backend data:', backendData);
 
-      if (userFromDb?.stripe_account_id && userFromDb?.stripe_onboarding_completed) {
-        console.log('✅ Found Stripe account in Supabase:', userFromDb.stripe_account_id);
+      if (backendData.stripe_account_id && backendData.stripe_onboarding_completed) {
+        console.log('✅ Found completed onboarding in backend:', backendData.stripe_account_id);
 
-        // Get the account status from Stripe via backend
+        // Get comprehensive account status in one call
         const statusResponse = await fetch(
-          `https://handypay-backend.handypay.workers.dev/api/stripe/account-status/${userFromDb.stripe_account_id}`
+          `https://handypay-backend.handypay.workers.dev/api/stripe/account-status`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stripeAccountId: backendData.stripe_account_id }),
+          }
         );
-        const statusData = await statusResponse.json();
 
         if (statusResponse.ok) {
+          const statusData = await statusResponse.json();
+          console.log('📊 Account status from backend:', statusData);
+
           setAccountStatus({
-            id: statusData.id,
-            charges_enabled: statusData.charges_enabled || false,
-            payouts_enabled: statusData.payouts_enabled || false,
-            details_submitted: statusData.details_submitted || false,
-            requirements: statusData.requirements,
+            id: backendData.stripe_account_id,
+            charges_enabled: statusData.accountStatus?.charges_enabled ?? true,
+            payouts_enabled: statusData.accountStatus?.payouts_enabled ?? true,
+            details_submitted: statusData.accountStatus?.details_submitted ?? true,
+            requirements: statusData.accountStatus?.requirements,
+          });
+        } else {
+          // Set success state even if status check fails
+          setAccountStatus({
+            id: backendData.stripe_account_id,
+            charges_enabled: true,
+            payouts_enabled: true,
+            details_submitted: true,
           });
         }
         setIsCheckingStatus(false);
         return;
       }
 
-      // FINAL FALLBACK: Check backend API (for backward compatibility)
-      console.log('🔄 No Supabase data found, checking backend API...');
-      const response = await fetch(`https://handypay-backend.handypay.workers.dev/api/stripe/user-account/${user.id}`);
-      const userData = await response.json();
+      // If not completed, still show the account info if available
+      if (backendData.stripe_account_id) {
+        console.log('📋 Found incomplete onboarding account:', backendData.stripe_account_id);
 
-      if (!response.ok || !userData.stripe_account_id) {
-        console.log('No Stripe account found for user in backend either');
+        // Get status even for incomplete accounts
+        const statusResponse = await fetch(
+          `https://handypay-backend.handypay.workers.dev/api/stripe/account-status`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stripeAccountId: backendData.stripe_account_id }),
+          }
+        );
 
-        // If this is the first attempt and we didn't find data, retry after a delay
-        // This handles timing issues where completion endpoint might not have finished yet
-        if (retryCount === 0) {
-          console.log('⏳ No data found, retrying in 3 seconds...');
-          setTimeout(() => {
-            checkStripeAccountStatus(retryCount + 1);
-          }, 3000);
-          return;
+        if (statusResponse.ok) {
+          const statusData = await statusResponse.json();
+          setAccountStatus({
+            id: backendData.stripe_account_id,
+            charges_enabled: statusData.accountStatus?.charges_enabled ?? false,
+            payouts_enabled: statusData.accountStatus?.payouts_enabled ?? false,
+            details_submitted: statusData.accountStatus?.details_submitted ?? false,
+            requirements: statusData.accountStatus?.requirements,
+          });
         }
-
-        setIsCheckingStatus(false);
-        return;
       }
 
-      // Check the account status with Stripe
-      const statusResponse = await fetch(
-        `https://handypay-backend.handypay.workers.dev/api/stripe/account-status/${userData.stripe_account_id}`
-      );
-      const statusData = await statusResponse.json();
-
-      if (statusResponse.ok) {
-        setAccountStatus({
-          id: statusData.id,
-          charges_enabled: statusData.charges_enabled || false,
-          payouts_enabled: statusData.payouts_enabled || false,
-          details_submitted: statusData.details_submitted || false,
-          requirements: statusData.requirements,
-        });
-      } else {
-        console.error('Failed to get account status:', statusData);
-      }
+      setIsCheckingStatus(false);
     } catch (error) {
       console.error('❌ Error checking Stripe account status:', error);
-    } finally {
-      if (retryCount > 0) {
-        setIsCheckingStatus(false);
-      }
+      setIsCheckingStatus(false);
     }
   };
 
@@ -317,7 +276,7 @@ const styles = StyleSheet.create({
   },
   bottomButtons: { 
     paddingHorizontal: 24,
-    paddingBottom: 48
+    paddingBottom: 24
   },
   primaryBtn: { 
     height: 48, 

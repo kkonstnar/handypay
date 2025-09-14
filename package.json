@@ -56,7 +56,8 @@
     "react-native-view-shot": "^4.0.3",
     "react-native-web": "^0.20.0",
     "rn-swipe-button": "^3.0.1",
-    "zod": "^4.1.5"
+    "zod": "^4.1.5",
+    "@react-native-community/netinfo": "11.4.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

@@ -91,12 +91,12 @@ export default function AccountModal({
         {
           text: 'Email Support',
           onPress: () => {
-            const emailUrl = 'mailto:support@handypay.com?subject=HandyPay Support Request';
+            const emailUrl = 'mailto:support@tryhandypay.com?subject=HandyPay Support Request';
             Linking.openURL(emailUrl).catch(() => {
               // If primary email fails, try alternate
-              const alternateEmailUrl = 'mailto:support@handypay.org?subject=HandyPay Support Request';
+              const alternateEmailUrl = 'mailto:support@tryhandypay.com?subject=HandyPay Support Request';
               Linking.openURL(alternateEmailUrl).catch(() => {
-                Alert.alert('Email Error', 'Unable to open email client. Please contact support@handypay.com or support@handypay.org manually.');
+                Alert.alert('Email Error', 'Unable to open email client. Please contact support@tryhandypay.com or support@tryhandypay.org manually.');
               });
             });
           }

@@ -8,12 +8,14 @@ import ArrowSvg from '../../../assets/arrow.svg';
 import UserScanSvg from '../../../assets/user-scan.svg';
 import BankSvg from '../../../assets/bank.svg';
 import StripeSvg from '../../../assets/stripe.svg';
+import SuccessSvg from '../../../assets/success.svg';
 import Button from '../../components/ui/Button';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/RootNavigator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUser } from '../../contexts/UserContext';
 import { stripeOnboardingManager } from '../../services/StripeOnboardingService';
+import { NotificationService } from '../../services/notificationService';
 import Toast from 'react-native-toast-message';
 
 // Helper functions for Stripe onboarding
@@ -77,13 +79,11 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
   const [currentStripeAccountId, setCurrentStripeAccountId] = useState<string | null>(null);
   const [isOnboardingInProgress, setIsOnboardingInProgress] = useState(false);
   const [hasIncompleteOnboarding, setHasIncompleteOnboarding] = useState(false);
-  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
-  const [pollingAttempts, setPollingAttempts] = useState(0);
-  const [maxPollingAttempts] = useState(30); // Poll for up to 30 seconds
   const [onboardingCompleted, setOnboardingCompleted] = useState(false);
   const [processingCompletion, setProcessingCompletion] = useState(false); // New state for processing phase
+  const [showRowLoading, setShowRowLoading] = useState(false); // Show loading spinner in row items
 
-  // Check for incomplete onboarding on mount
+  // Check for incomplete onboarding on mount and connect to WebSocket
   useEffect(() => {
     const checkIncompleteOnboarding = async () => {
       if (!user) return;
@@ -103,6 +103,24 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
     };
 
     checkIncompleteOnboarding();
+
+    // WebSocket disabled - using push notifications instead
+    // Push notifications provide better real-time updates than WebSockets
+    // if (user?.id) {
+    //   console.log('🔗 Connecting to WebSocket for onboarding updates...');
+    //   NotificationService.connectWebSocket(user.id);
+    // }
+
+    // Listen for onboarding completion events (push notifications handle this now)
+    // const cleanup = NotificationService.onOnboardingComplete(() => {
+    //   console.log('🎉 Onboarding completion detected via WebSocket');
+    //   completeOnboarding();
+    // });
+
+    return () => {
+      // cleanup();
+      // WebSocket disabled - push notifications are handling real-time updates
+    };
   }, [user]);
 
   // Deep link handling for Stripe onboarding completion
@@ -115,22 +133,19 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
           event.url.includes('handypay://stripe/success')) {
         console.log('✅ Stripe onboarding completion detected');
 
-        // Set processing completion state for better UI
+        // Set processing completion state immediately for better UX
         setProcessingCompletion(true);
         setLoading(true);
+        setShowRowLoading(true); // Show loading spinner in row items
 
-        // Start polling for onboarding status
-        if (isOnboardingInProgress) {
-          startPollingOnboardingStatus();
-        } else {
-          // If not marked as in progress, check immediately
-          checkOnboardingStatus();
-        }
+        // Push notifications will handle real-time updates - no need to poll
+        console.log('🔄 Onboarding started - push notifications will handle updates...');
       } else if (event.url.includes('handypay://stripe/error')) {
         console.log('❌ Stripe onboarding error detected');
         setIsOnboardingInProgress(false);
         setLoading(false);
-        setProcessingCompletion(false); // Clear processing state on error
+        setProcessingCompletion(false);
+        setShowRowLoading(false);
         Toast.show({
           type: 'error',
           text1: 'Onboarding Failed',
@@ -153,167 +168,44 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
 
     return () => {
       subscription?.remove();
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-      }
     };
   }, [user, isOnboardingInProgress]);
 
-  // Polling function for onboarding status
-  const startPollingOnboardingStatus = () => {
-    if (pollingInterval) {
-      clearInterval(pollingInterval);
-    }
+  // Push notifications handle real-time onboarding updates - no polling needed
 
-    console.log('🔄 Starting polling for onboarding status...');
-    setPollingAttempts(0);
+  // Helper function to handle onboarding completion
+  const completeOnboarding = () => {
+    console.log('🎉 Completing onboarding - clearing all states');
 
-    const interval = setInterval(async () => {
-      setPollingAttempts(prev => {
-        const newAttempts = prev + 1;
-        console.log(`🔍 Polling attempt ${newAttempts}/${maxPollingAttempts}`);
+    // Clear all onboarding states immediately
+    setIsOnboardingInProgress(false);
+    setLoading(false);
+    setProcessingCompletion(false);
+    setShowRowLoading(false);
 
-        if (newAttempts >= maxPollingAttempts) {
-          console.log('⏰ Polling timeout reached, stopping...');
-          clearInterval(interval);
-          setPollingInterval(null);
-          setIsOnboardingInProgress(false);
-          setLoading(false);
-          setProcessingCompletion(false); // Clear processing state on timeout
-          setHasIncompleteOnboarding(true); // Mark as incomplete so they can try again
-          Toast.show({
-            type: 'success',
-            text1: 'Still Processing',
-            text2: 'Your onboarding is taking longer than expected. Please check back in a few minutes.'
-          });
-          return newAttempts;
-        }
+    // Set completed state and show it briefly before navigating
+    setOnboardingCompleted(true);
 
-        checkOnboardingStatus();
-        return newAttempts;
-      });
-    }, 1000); // Poll every 1 second
+    // Navigate to success page after showing completion state for a moment
+    setTimeout(() => {
+      console.log('🏁 Navigating to SuccessPage');
+      navigation.replace('SuccessPage');
+    }, 800); // Brief delay to show completed state
 
-    setPollingInterval(interval);
-  };
-
-  // Consolidated status checking
-  const checkOnboardingStatus = async () => {
-    if (!user) return;
-
-    try {
-      console.log('🔍 Checking onboarding status...');
-      const userData = await fetchUserAccount(user.id);
-
-      if (userData.stripe_onboarding_completed) {
-        console.log('✅ Onboarding completed, navigating to SuccessPage');
-
-        // Clear polling if active
-        if (pollingInterval) {
-          clearInterval(pollingInterval);
-          setPollingInterval(null);
-        }
-
-        setIsOnboardingInProgress(false);
-        setLoading(false);
-        setProcessingCompletion(false); // Clear processing state
-        setOnboardingCompleted(true); // Mark as completed for UI updates
-        navigation.replace('SuccessPage');
-
-        // Show success toast
-        Toast.show({
-          type: 'success',
-          text1: 'Onboarding Completed!',
-          text2: 'Your account is now ready to accept payments.'
-        });
-
-        return true; // Indicate completion
-      }
-
-      const accountId = userData.stripe_account_id || userData.stripeAccountId;
-      if (accountId) {
-        const statusData = await fetchAccountStatus(accountId);
-        const chargesEnabled = statusData.accountStatus?.charges_enabled;
-
-        if (chargesEnabled) {
-          console.log('✅ Onboarding completed (charges enabled), navigating to SuccessPage');
-
-          // If charges are enabled but backend isn't updated yet, try to force update
-          if (!userData.stripe_onboarding_completed) {
-            console.log('🔄 Charges enabled but backend not updated - attempting manual update...');
-            try {
-              console.log('🔄 Calling manual backend update:', {
-                url: 'https://handypay-backend.handypay.workers.dev/api/stripe/complete-onboarding',
-                userId: user.id,
-                stripeAccountId: accountId
-              });
-
-              const response = await fetch('https://handypay-backend.handypay.workers.dev/api/stripe/complete-onboarding', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  userId: user.id,
-                  stripeAccountId: accountId
-                }),
-              });
-
-              const result = await response.json();
-              console.log('✅ Manual backend update response:', {
-                status: response.status,
-                result
-              });
-
-              if (response.ok && result.success) {
-                console.log('🎉 Manual backend update successful');
-              } else {
-                console.error('❌ Manual backend update failed with result:', result);
-              }
-            } catch (updateError) {
-              console.error('❌ Manual backend update network error:', updateError);
-            }
-          }
-
-          // Clear polling if active
-          if (pollingInterval) {
-            clearInterval(pollingInterval);
-            setPollingInterval(null);
-          }
-
-          setIsOnboardingInProgress(false);
-          setLoading(false);
-          setOnboardingCompleted(true); // Mark as completed for UI updates
-          navigation.replace('SuccessPage');
-
-          // Show success toast
-          Toast.show({
-            type: 'success',
-            text1: 'Onboarding Completed!',
-            text2: 'Your account is now ready to accept payments.'
-          });
-
-          return true; // Indicate completion
-        }
-      }
-
-      return false; // Not completed yet
-    } catch (error) {
-      console.error('❌ Error checking onboarding status:', error);
-      return false;
-    }
+    Toast.show({
+      type: 'success',
+      text1: 'Onboarding Completed!',
+      text2: 'Your account is now ready to accept payments.'
+    });
   };
 
   const cancelOnboarding = () => {
     console.log('🗑️ Cancelling onboarding process...');
 
-    // Clear polling if active
-    if (pollingInterval) {
-      clearInterval(pollingInterval);
-      setPollingInterval(null);
-    }
-
     setIsOnboardingInProgress(false);
     setLoading(false);
-    setProcessingCompletion(false); // Clear processing state
+    setProcessingCompletion(false);
+    setShowRowLoading(false);
     setHasIncompleteOnboarding(true); // Mark as incomplete so button shows "Continue Onboarding"
     Toast.show({
       type: 'success',
@@ -409,7 +301,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
 
         setIsOnboardingInProgress(true);
         setLoading(false); // Clear loading state since browser is closed
-        startPollingOnboardingStatus();
+        // Push notifications handle real-time updates - no polling needed
       } catch (error) {
         console.error('Error continuing Stripe onboarding:', error);
         Alert.alert('Error', 'Unable to continue Stripe onboarding');
@@ -480,7 +372,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
 
           setIsOnboardingInProgress(true);
           setLoading(false); // Clear loading state since browser is closed
-          startPollingOnboardingStatus();
+          // Push notifications handle real-time updates - no polling needed
         } catch (error) {
           console.error('Error opening Stripe URL:', error);
           Alert.alert('Error', 'Unable to open Stripe onboarding link');
@@ -544,7 +436,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
 
       setIsOnboardingInProgress(true);
       setLoading(false); // Clear loading state since browser is closed
-      startPollingOnboardingStatus();
+      // WebSocket handles real-time updates - no polling needed
     } catch (error) {
       console.error('Stripe onboarding error:', error);
       Alert.alert(
@@ -593,13 +485,15 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         <Row
           label="Complete identity verification"
           icon={<UserScanSvg width={24} height={24} />}
-          completed={onboardingCompleted || processingCompletion}
+          completed={onboardingCompleted}
+          loading={showRowLoading}
         />
         <View style={styles.separator} />
         <Row
           label="Link bank account"
           icon={<BankSvg width={24} height={24} />}
-          completed={onboardingCompleted || processingCompletion}
+          completed={onboardingCompleted}
+          loading={showRowLoading}
         />
 
       </TouchableOpacity>
@@ -611,32 +505,46 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
 
       <View style={styles.bottomButtons}>
         <Button
-          style={[styles.primaryBtn, (loading || processingCompletion) && styles.disabledButton]}
-          onPress={processingCompletion ? undefined : (isOnboardingInProgress ? cancelOnboarding : handleStripeOnboarding)}
-          disabled={loading || processingCompletion}
+          style={[styles.primaryBtn, (loading || onboardingCompleted) && styles.disabledButton]}
+          onPress={onboardingCompleted ? undefined : (processingCompletion ? cancelOnboarding : (isOnboardingInProgress ? cancelOnboarding : handleStripeOnboarding))}
+          disabled={loading || onboardingCompleted}
         >
-          {(loading || processingCompletion) ? (
+          {loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color="#ffffff" />
               <Text style={[styles.primaryBtnText, { marginLeft: 8 }]}>
-                {processingCompletion ? "Completing onboarding..." : hasIncompleteOnboarding ? "Continuing onboarding..." : currentStripeAccountId ? "Verifying your account..." : "Starting onboarding..."}
+                {processingCompletion ? "Verifying completion..." : hasIncompleteOnboarding ? "Continuing onboarding..." : currentStripeAccountId ? "Verifying your account..." : "Starting onboarding..."}
               </Text>
             </View>
+          ) : processingCompletion ? (
+            <Text style={styles.primaryBtnText}>
+              Cancel Onboarding
+            </Text>
           ) : isOnboardingInProgress ? (
             <Text style={styles.primaryBtnText}>
               Cancel Onboarding
             </Text>
+          ) : onboardingCompleted ? (
+            <Text style={styles.primaryBtnText}>
+              Onboarding Complete
+            </Text>
           ) : (
             <Text style={styles.primaryBtnText}>
-              {onboardingCompleted ? "Onboarding Complete" : hasIncompleteOnboarding ? "Continue Onboarding" : "Get started"}
+              {hasIncompleteOnboarding ? "Continue Onboarding" : "Get started"}
             </Text>
           )}
         </Button>
         <Button
           variant="secondary"
-          style={[styles.secondaryBtn, (loading || processingCompletion) && styles.disabledButton]}
-          onPress={() => navigation.replace('HomeTabs')}
-          disabled={loading || processingCompletion}
+          style={[styles.secondaryBtn, (loading || onboardingCompleted) && styles.disabledButton]}
+          onPress={() => {
+            // Reset navigation stack to prevent going back to legal pages
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'HomeTabs' }],
+            });
+          }}
+          disabled={loading || onboardingCompleted}
         >
           Skip for now
         </Button>
@@ -645,19 +553,19 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
   );
 }
 
-function Row({ label, icon, completed = false }: { label: string; icon: React.ReactElement; completed?: boolean }): React.ReactElement {
+function Row({ label, icon, completed = false, loading = false }: { label: string; icon: React.ReactElement; completed?: boolean; loading?: boolean }): React.ReactElement {
   return (
     <View style={styles.row}>
       <View style={[styles.rowIconCircle, completed && styles.completedIconCircle]}>
-        {completed ? (
-          <Ionicons name="checkmark" size={20} color="#10B981" />
+        {loading ? (
+          <ActivityIndicator size="small" color="#3AB75C" />
         ) : (
           icon
         )}
       </View>
       <Text style={[styles.rowLabel, completed && styles.completedRowLabel]}>{label}</Text>
       {completed ? (
-        <Ionicons name="checkmark-circle" size={22} color="#10B981" />
+        <SuccessSvg width={22} height={22} />
       ) : (
         <Ionicons name="chevron-forward" size={22} color="#9ca3af" />
       )}
@@ -711,8 +619,8 @@ const styles = StyleSheet.create({
     elevation: 2,
     },
   completedIconCircle: {
-    backgroundColor: '#D1FAE5', // Light green background
-    borderColor: '#10B981', // Green border
+    backgroundColor: '#f8fafc', // Keep original background
+    borderColor: '#e2e8f0', // Keep original border
   },
   rowLabel: { flex: 1, marginLeft: 0, fontSize: 16, fontWeight: '500', color: '#111827', fontFamily: 'DMSans-Medium' },
   completedRowLabel: {

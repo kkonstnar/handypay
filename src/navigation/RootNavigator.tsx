@@ -212,7 +212,11 @@ function AuthRouter(): React.ReactElement {
       <Stack.Screen name="LegalPage" component={LegalPage} />
       <Stack.Screen name="TermsContentPage" component={TermsContentPage} />
       <Stack.Screen name="GetStartedPage" component={GetStartedPage} />
-      <Stack.Screen name="SuccessPage" component={SuccessPage} />
+      <Stack.Screen
+        name="SuccessPage"
+        component={SuccessPage}
+        options={{ gestureEnabled: false }}
+      />
       <Stack.Screen name="PaymentApproved" component={PaymentApproved} />
       <Stack.Screen name="PaymentError" component={PaymentError} />
       <Stack.Screen name="ShareReceipt" component={ShareReceipt} />

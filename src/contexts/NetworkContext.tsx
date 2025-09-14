@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import NetInfo from '@react-native-community/netinfo';
 import SystemBannerContainer from '../components/ui/SystemBannerContainer';
 
 interface NetworkContextType {
@@ -31,64 +32,74 @@ export const NetworkProvider: React.FC<NetworkProviderProps> = ({ children }) =>
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null;
+    console.log('🌐 Setting up NetInfo network monitoring...');
 
-    const checkConnectivity = async () => {
+    let unsubscribe: (() => void) | null = null;
+
+    const setupNetInfo = async () => {
       try {
-        // Simple connectivity check using fetch
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+        // Subscribe to network state changes
+        unsubscribe = NetInfo.addEventListener(state => {
+          const connected = state.isConnected ?? false;
+          const hasInternetReachability = state.isInternetReachable ?? true;
+          
+          // Consider connected only if both conditions are true
+          const actuallyConnected = connected && hasInternetReachability;
 
-        const response = await fetch('https://www.google.com/favicon.ico', {
-          method: 'HEAD',
-          cache: 'no-cache',
-          signal: controller.signal,
+          console.log('🌐 Network state changed:', {
+            type: state.type,
+            isConnected: connected,
+            isInternetReachable: hasInternetReachability,
+            actuallyConnected,
+            timestamp: new Date().toLocaleTimeString()
+          });
+
+          setIsConnected(actuallyConnected);
+
+          // Show banner when connection is lost
+          if (!actuallyConnected && !showNetworkBanner) {
+            console.log('📡 Showing network banner - connection lost');
+            setShowNetworkBanner(true);
+          }
+          // Hide banner when connection is restored
+          else if (actuallyConnected && showNetworkBanner) {
+            console.log('📡 Hiding network banner - connection restored');
+            setShowNetworkBanner(false);
+          }
         });
 
-        clearTimeout(timeoutId);
-        const connected = response.ok;
+        // Get initial network state
+        const state = await NetInfo.fetch();
+        const connected = state.isConnected ?? false;
+        const hasInternetReachability = state.isInternetReachable ?? true;
+        const actuallyConnected = connected && hasInternetReachability;
 
-        // Only log connection changes, not every check
-        if (connected !== isConnected) {
-          console.log('🌐 Network status changed:', { connected, timestamp: new Date().toLocaleTimeString() });
-        }
+        console.log('🌐 Initial network state:', {
+          type: state.type,
+          isConnected: connected,
+          isInternetReachable: hasInternetReachability,
+          actuallyConnected
+        });
 
-        setIsConnected(connected);
+        setIsConnected(actuallyConnected);
+        setShowNetworkBanner(!actuallyConnected);
 
-        // Show banner immediately when connection is lost
-        if (!connected && !showNetworkBanner) {
-          console.log('📡 Showing network banner - connection lost');
-          setShowNetworkBanner(true);
-        }
-        // Hide banner immediately when connection is restored
-        else if (connected && showNetworkBanner) {
-          console.log('📡 Hiding network banner - connection restored');
-          setShowNetworkBanner(false);
-        }
       } catch (error) {
-        console.log('🌐 Global Network check failed:', error instanceof Error ? error.message : 'Unknown error');
-        const connected = false;
-
-        setIsConnected(connected);
-
-        // Show banner when connection is lost
-        if (!showNetworkBanner) {
-          console.log('📡 Showing global network banner - connection failed');
-          setShowNetworkBanner(true);
-        }
+        console.warn('⚠️ NetInfo not available, network monitoring disabled until rebuild:', error);
+        
+        // Just assume connected and hide banner until NetInfo is available
+        setIsConnected(true);
+        setShowNetworkBanner(false);
       }
     };
 
-    // Check connectivity immediately on mount
-    checkConnectivity();
+    setupNetInfo();
 
-    // Check connectivity every 10 seconds for reasonable responsiveness
-    intervalId = setInterval(checkConnectivity, 10000);
-
-    // Cleanup interval on unmount
+    // Cleanup subscription on unmount
     return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
+      if (unsubscribe) {
+        console.log('🌐 Cleaning up NetInfo subscription');
+        unsubscribe();
       }
     };
   }, [showNetworkBanner]);

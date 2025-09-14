@@ -14,6 +14,7 @@ import { RootStackParamList } from '../../navigation/RootNavigator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppleAuth, useGoogleAuth } from '../../services/ExpoAuthService';
 import { useUser, createUserFromAppleAuth, createUserFromGoogleAuth } from '../../contexts/UserContext';
+import { useNetwork } from '../../contexts/NetworkContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Toast from 'react-native-toast-message';
 
@@ -121,8 +122,7 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
   const [loading, setLoading] = useState(false);
   const [provider, setProvider] = useState<string | null>(null);
   const [hasNavigated, setHasNavigated] = useState(false);
-  const [isConnected, setIsConnected] = useState(true);
-  const [showNetworkBanner, setShowNetworkBanner] = useState(false);
+  const { isConnected, showNetworkBanner } = useNetwork();
   const [showEmailLogin, setShowEmailLogin] = useState(false);
   const [checkingOnboarding, setCheckingOnboarding] = useState(false);
 
@@ -165,66 +165,6 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
     }
   }, [user]);
 
-  // Simple network connectivity monitoring
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null;
-
-    const checkConnectivity = async () => {
-      try {
-        // Simple connectivity check using fetch
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-
-        const response = await fetch('https://www.google.com/favicon.ico', {
-          method: 'HEAD',
-          cache: 'no-cache',
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-        const isConnected = response.ok;
-
-        console.log('🌐 Network check result:', { isConnected });
-
-        setIsConnected(isConnected);
-
-        // Show banner when connection is lost
-        if (!isConnected && !showNetworkBanner) {
-          console.log('📡 Showing network banner - connection lost');
-          setShowNetworkBanner(true);
-        }
-        // Hide banner when connection is restored
-        else if (isConnected && showNetworkBanner) {
-          console.log('📡 Hiding network banner - connection restored');
-          setShowNetworkBanner(false);
-        }
-      } catch (error) {
-        console.log('🌐 Network check failed:', error instanceof Error ? error.message : 'Unknown error');
-        const isConnected = false;
-
-        setIsConnected(isConnected);
-
-        // Show banner when connection is lost
-        if (!showNetworkBanner) {
-          console.log('📡 Showing network banner - connection lost');
-          setShowNetworkBanner(true);
-        }
-      }
-    };
-
-    // Delay initial connectivity check to prevent flash on mount
-    setTimeout(() => checkConnectivity(), 1000);
-
-    // Check connectivity every 30 seconds to prevent flashes (was 10 seconds)
-    intervalId = setInterval(checkConnectivity, 30000);
-
-    // Cleanup interval on unmount
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    };
-  }, [showNetworkBanner]);
 
   // COMMENTED OUT: Only handle navigation for completely new users who just signed up
   // Existing users are handled by RootNavigator based on their onboarding status
@@ -610,7 +550,7 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
       <View style={styles.content}>
         <Text style={styles.mainHeading}>Start accepting payments with your phone</Text>
         <Text style={styles.subText}>
-          ZERO down time. No monthly fees. Just your phone and a few quick steps.
+          Create payment links and QR codes instantly to accept JMD or USD in just a few simple steps.
         </Text>
 
         <View style={styles.buttonContainer}>

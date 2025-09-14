@@ -54,6 +54,22 @@ function AppContent(): React.ReactElement {
     }
   }, [user?.id]);
 
+  // Handle WebSocket reconnection when user changes
+  useEffect(() => {
+    if (user?.id) {
+      console.log('🔄 User changed, reconnecting WebSocket for:', user.id);
+      NotificationService.connectWebSocket(user.id);
+    } else {
+      console.log('🔌 No user, disconnecting WebSocket');
+      NotificationService.disconnectWebSocket();
+    }
+
+    return () => {
+      // Cleanup on user change
+      NotificationService.disconnectWebSocket();
+    };
+  }, [user?.id]);
+
   const onLayoutRootView = useCallback(async () => {
     // Don't hide Expo splash screen here - let the custom splash handle it
   }, []);
@@ -69,6 +85,18 @@ function AppContent(): React.ReactElement {
 
     // Initialize notification service
     NotificationService.initialize();
+
+    // Connect to WebSocket when user is available
+    if (user?.id) {
+      console.log('🔗 Connecting to WebSocket for user:', user.id);
+      NotificationService.connectWebSocket(user.id);
+    }
+
+    // Cleanup WebSocket on unmount
+    return () => {
+      console.log('🔌 Disconnecting WebSocket on app cleanup');
+      NotificationService.disconnectWebSocket();
+    };
 
     console.log('🌐 Setting up global deep link handler');
 

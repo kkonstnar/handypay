@@ -137,8 +137,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (session.data?.user) {
           console.log('✅ Found authenticated session:', session.data.user.id);
 
-          // Create user data from authenticated session
-          const userData: UserData = {
+          // Create initial user data from authenticated session
+          let userData: UserData = {
             id: session.data.user.id,
             email: session.data.user.email || null,
             fullName: session.data.user.name || null,
@@ -154,6 +154,31 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
             safetyPinEnabled: session.data.user.safetyPinEnabled || false,
             avatarUri: session.data.user.image || undefined,
           };
+
+          // Fetch latest onboarding status from backend
+          try {
+            console.log('🔄 Fetching latest onboarding status from backend...');
+            const response = await fetch(
+              `https://handypay-backend.handypay.workers.dev/api/stripe/user-account/${userData.id}`
+            );
+
+            if (response.ok) {
+              const backendData = await response.json();
+              console.log('✅ Backend data received:', backendData);
+
+              // Update user data with latest backend information
+              userData = {
+                ...userData,
+                stripeAccountId: backendData.stripe_account_id || userData.stripeAccountId,
+                stripeOnboardingCompleted: backendData.stripe_onboarding_completed || false,
+              };
+              console.log('🔄 Updated user data with backend info');
+            } else {
+              console.warn('⚠️ Could not fetch backend data, using session data');
+            }
+          } catch (error) {
+            console.warn('⚠️ Error fetching backend data:', error);
+          }
 
           // Store in AsyncStorage for offline access
           await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
@@ -285,7 +310,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Also save to Supabase database
         try {
-          const dbResult = await SupabaseUserService.upsertUser(userData);
+          const dbResult = await SupabaseUserService.upsertUser(userData as any);
           if (dbResult) {
             console.log('✅ User data synced to Supabase:', dbResult);
           } else {
@@ -307,10 +332,31 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Load the existing account data
             const existingUserData = await SupabaseUserService.getUser(backendSyncResult.userId);
             if (existingUserData) {
-              // Save the existing account data instead
-              await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(existingUserData));
-              setUserState(existingUserData);
-              console.log('✅ Switched to existing account:', existingUserData);
+              // Transform DatabaseUser to UserData format
+              const transformedUserData: UserData = {
+                id: existingUserData.id,
+                email: existingUserData.email || null,
+                fullName: existingUserData.full_name || null,
+                firstName: existingUserData.first_name || null,
+                lastName: existingUserData.last_name || null,
+                authProvider: (existingUserData as any).auth_provider || 'apple',
+                appleUserId: (existingUserData as any).apple_user_id || null,
+                googleUserId: (existingUserData as any).google_user_id || null,
+                stripeAccountId: (existingUserData as any).stripe_account_id || null,
+                stripeOnboardingCompleted: (existingUserData as any).stripe_onboarding_completed || false,
+                memberSince: existingUserData.created_at || new Date().toISOString(),
+                faceIdEnabled: (existingUserData as any).face_id_enabled || false,
+                safetyPinEnabled: (existingUserData as any).safety_pin_enabled || false,
+                avatarUri: (existingUserData as any).avatar_uri || undefined,
+                isBanned: (existingUserData as any).is_banned || false,
+                banReason: (existingUserData as any).ban_reason || undefined,
+                banType: (existingUserData as any).ban_type || undefined,
+              };
+
+              // Save the transformed data
+              await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(transformedUserData));
+              setUserState(transformedUserData);
+              console.log('✅ Switched to existing account:', transformedUserData);
               return; // Don't proceed with original user data
             }
           }

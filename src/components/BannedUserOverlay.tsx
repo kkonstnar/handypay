@@ -24,7 +24,7 @@ export const BannedUserOverlay: React.FC<BannedUserOverlayProps> = ({
     } else {
       Alert.alert(
         'Contact Support',
-        'Please email support@handypay.com with your account details for assistance.',
+        'Please email support@tryhandypay.com with your account details for assistance.',
         [{ text: 'OK' }]
       );
     }
