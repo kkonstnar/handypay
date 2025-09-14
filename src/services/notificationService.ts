@@ -304,7 +304,9 @@ export class NotificationService {
   static setupGeneralNotificationListener(): void {
     // Keep this for future use - payments, payouts, etc.
     // For now, ban detection is handled via polling
-    console.log("🔔 General notification listener setup (ban detection uses polling)");
+    console.log(
+      "🔔 General notification listener setup (ban detection uses polling)"
+    );
   }
 
   /**

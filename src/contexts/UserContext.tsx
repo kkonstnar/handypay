@@ -240,32 +240,32 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initializeUser();
   }, []);
 
-  // Ban status monitoring - simple polling approach
-  useEffect(() => {
+  // Ban status monitoring - smart approach
+  const checkBanStatus = async (showToast: boolean = true) => {
     if (!user?.id) return;
 
-    const checkBanStatus = async () => {
-      try {
-        console.log('🔍 Checking ban status for user:', user.id);
-        const response = await fetch(`https://handypay-backend.handypay.workers.dev/api/users/ban-status/${user.id}`);
+    try {
+      console.log('🔍 Checking ban status for user:', user.id);
+      const response = await fetch(`https://handypay-backend.handypay.workers.dev/api/users/ban-status/${user.id}`);
 
-        if (response.ok) {
-          const banData = await response.json();
+      if (response.ok) {
+        const banData = await response.json();
 
-          if (banData.isBanned && !user.isBanned) {
-            console.log('🚫 User is banned, updating state');
+        if (banData.isBanned && !user.isBanned) {
+          console.log('🚫 User is banned, updating state');
 
-            const updatedUser = {
-              ...user,
-              isBanned: true,
-              banReason: banData.banReason,
-              banType: banData.banType,
-            };
+          const updatedUser = {
+            ...user,
+            isBanned: true,
+            banReason: banData.banReason,
+            banType: banData.banType,
+          };
 
-            setUserState(updatedUser);
-            await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
+          setUserState(updatedUser);
+          await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
 
-            // Show the ban notification toast
+          // Show the ban notification toast (if requested)
+          if (showToast) {
             const { showBanNotification } = await import('../utils/banNotification');
             showBanNotification({
               reason: banData.banReason,
@@ -273,18 +273,21 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
           }
         }
-      } catch (error) {
-        console.error('❌ Error checking ban status:', error);
       }
-    };
+    } catch (error) {
+      console.error('❌ Error checking ban status:', error);
+    }
+  };
 
-    // Check immediately when component mounts
-    checkBanStatus();
-
-    // Then check every 60 seconds (less frequent than 30s polling)
-    const interval = setInterval(checkBanStatus, 60000);
-
-    return () => clearInterval(interval);
+  // Only check ban status on:
+  // 1. App startup (when user data is loaded)
+  // 2. When user logs in
+  // 3. When app comes back from background (optional)
+  useEffect(() => {
+    if (user?.id && !user.isBanned) {
+      // Check immediately when user data is available
+      checkBanStatus(true);
+    }
   }, [user?.id]);
 
   const setUser = async (userData: UserData | null) => {
@@ -564,25 +567,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     getCachedAvatar,
     avatarLoading,
     // Ban status
-    checkBanStatus: async () => {
-      try {
-        if (!user?.id) return;
-        console.log('🔍 Manual ban status check for user:', user.id);
-        const response = await fetch(`https://handypay-backend.handypay.workers.dev/api/users/ban-status/${user.id}`);
-        if (response.ok) {
-          const banData = await response.json();
-          if (banData.isBanned && !user.isBanned) {
-            const updatedUser = { ...user, ...banData };
-            setUserState(updatedUser);
-            await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
-            const { showBanNotification } = await import('../utils/banNotification');
-            showBanNotification(banData.banDetails);
-          }
-        }
-      } catch (error) {
-        console.error('❌ Error in manual ban check:', error);
-      }
-    },
+    checkBanStatus,
     isBanned: user?.isBanned || false,
   };
 
