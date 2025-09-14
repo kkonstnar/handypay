@@ -102,8 +102,7 @@ interface UserContextType {
   cacheAvatar: (uri: string) => Promise<void>;
   getCachedAvatar: () => string | null;
   avatarLoading: boolean;
-  // Ban status checking
-  checkBanStatus: () => Promise<void>;
+  // Ban status - now handled via webhooks
   isBanned: boolean;
 }
 
@@ -240,54 +239,57 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initializeUser();
   }, []);
 
-  // Ban status monitoring - smart approach
-  const checkBanStatus = async (showToast: boolean = true) => {
+  // Ban status monitoring - webhook approach
+  // Backend webhook sends push notification instantly when user is banned
+  useEffect(() => {
     if (!user?.id) return;
 
-    try {
-      console.log('🔍 Checking ban status for user:', user.id);
-      const response = await fetch(`https://handypay-backend.handypay.workers.dev/api/users/ban-status/${user.id}`);
+    const handleWebhookBanNotification = async (banDetails: any) => {
+      try {
+        console.log('🚫 Webhook ban notification received:', banDetails);
 
-      if (response.ok) {
-        const banData = await response.json();
+        // Update user state immediately
+        const updatedUser = {
+          ...user,
+          isBanned: true,
+          banReason: banDetails?.reason,
+          banType: banDetails?.type,
+        };
 
-        if (banData.isBanned && !user.isBanned) {
-          console.log('🚫 User is banned, updating state');
+        setUserState(updatedUser);
+        await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
 
-          const updatedUser = {
-            ...user,
-            isBanned: true,
-            banReason: banData.banReason,
-            banType: banData.banType,
-          };
+        // Show the ban notification toast
+        const { showBanNotification } = await import('../utils/banNotification');
+        showBanNotification(banDetails);
 
-          setUserState(updatedUser);
-          await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
-
-          // Show the ban notification toast (if requested)
-          if (showToast) {
-            const { showBanNotification } = await import('../utils/banNotification');
-            showBanNotification({
-              reason: banData.banReason,
-              type: banData.banType
-            });
-          }
-        }
+      } catch (error) {
+        console.error('❌ Error handling webhook ban notification:', error);
       }
-    } catch (error) {
-      console.error('❌ Error checking ban status:', error);
-    }
-  };
+    };
 
-  // Only check ban status on:
-  // 1. App startup (when user data is loaded)
-  // 2. When user logs in
-  // 3. When app comes back from background (optional)
-  useEffect(() => {
-    if (user?.id && !user.isBanned) {
-      // Check immediately when user data is available
-      checkBanStatus(true);
-    }
+    // Set up webhook notification listener
+    const setupWebhookListener = async () => {
+      try {
+        const { NotificationService } = await import('../services/notificationService');
+        NotificationService.setupNotificationListener(handleWebhookBanNotification);
+        console.log('🔔 Webhook notification listener set up');
+      } catch (error) {
+        console.error('❌ Error setting up webhook notification listener:', error);
+      }
+    };
+
+    setupWebhookListener();
+
+    // Cleanup function
+    return () => {
+      try {
+        const { NotificationService } = require('../services/notificationService');
+        NotificationService.cleanupNotificationListeners();
+      } catch (error) {
+        console.error('❌ Error cleaning up webhook notification listeners:', error);
+      }
+    };
   }, [user?.id]);
 
   const setUser = async (userData: UserData | null) => {
@@ -566,8 +568,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     cacheAvatar,
     getCachedAvatar,
     avatarLoading,
-    // Ban status
-    checkBanStatus,
+    // Ban status - now handled via webhooks
     isBanned: user?.isBanned || false,
   };
 

@@ -298,15 +298,62 @@ export class NotificationService {
   }
 
   /**
-   * Set up notification listener for general notifications (payments, etc.)
-   * Ban detection now uses simple polling instead of push notifications
+   * Set up notification listener for all notifications including bans
+   * Ban detection now uses webhooks (instant push notifications)
    */
-  static setupGeneralNotificationListener(): void {
-    // Keep this for future use - payments, payouts, etc.
-    // For now, ban detection is handled via polling
-    console.log(
-      "🔔 General notification listener setup (ban detection uses polling)"
+  static setupNotificationListener(
+    onBanNotification: (banDetails: any) => void,
+    onPaymentNotification?: (paymentDetails: any) => void,
+    onPayoutNotification?: (payoutDetails: any) => void
+  ): void {
+    console.log("🔔 Setting up webhook notification listeners");
+
+    // Listen for ban notifications (webhook triggered)
+    const banSubscription = Notifications.addNotificationReceivedListener(
+      (notification) => {
+        const data = notification.request.content.data;
+
+        if (data?.type === "account_banned") {
+          console.log("🚫 Webhook ban notification received:", data);
+          onBanNotification(data.banDetails);
+        }
+
+        if (data?.type === "payment_received" && onPaymentNotification) {
+          console.log("💰 Webhook payment notification received:", data);
+          onPaymentNotification(data);
+        }
+
+        if (data?.type === "payout_completed" && onPayoutNotification) {
+          console.log("📨 Webhook payout notification received:", data);
+          onPayoutNotification(data);
+        }
+      }
     );
+
+    // Also listen for notifications when app is in background
+    const responseSubscription =
+      Notifications.addNotificationResponseReceivedListener((response) => {
+        const data = response.notification.request.content.data;
+
+        if (data?.type === "account_banned") {
+          console.log("🚫 User tapped webhook ban notification:", data);
+          onBanNotification(data.banDetails);
+        }
+      });
+
+    // Store subscriptions for cleanup if needed
+    (this as any)._webhookSubscriptions = [banSubscription, responseSubscription];
+  }
+
+  /**
+   * Clean up webhook notification listeners
+   */
+  static cleanupNotificationListeners(): void {
+    const subscriptions = (this as any)._webhookSubscriptions;
+    if (subscriptions) {
+      subscriptions.forEach((subscription: any) => subscription.remove());
+      (this as any)._webhookSubscriptions = null;
+    }
   }
 
   /**
