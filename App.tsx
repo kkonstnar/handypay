@@ -35,40 +35,11 @@ function AppContent(): React.ReactElement {
     },
   });
 
-  // Set up ban notification listener
-  useEffect(() => {
-    if (user?.id) {
-      const { NotificationService } = require('./src/services/notificationService');
+  // Ban detection now uses simple polling in UserContext
+  // No need for push notification listener for bans
 
-      const handleBanNotification = (notificationBanDetails: any) => {
-        console.log('🚫 Received ban notification:', notificationBanDetails);
-        // The useBanProtection hook will handle the state updates
-        // This is just for logging additional context
-      };
-
-      NotificationService.setupBanNotificationListener(handleBanNotification);
-
-      return () => {
-        NotificationService.cleanupBanNotificationListeners();
-      };
-    }
-  }, [user?.id]);
-
-  // Handle WebSocket reconnection when user changes
-  useEffect(() => {
-    if (user?.id) {
-      console.log('🔄 User changed, reconnecting WebSocket for:', user.id);
-      NotificationService.connectWebSocket(user.id);
-    } else {
-      console.log('🔌 No user, disconnecting WebSocket');
-      NotificationService.disconnectWebSocket();
-    }
-
-    return () => {
-      // Cleanup on user change
-      NotificationService.disconnectWebSocket();
-    };
-  }, [user?.id]);
+  // WebSocket disabled - using push notifications and polling instead
+  // Real-time updates handled via push notifications and simple polling
 
   const onLayoutRootView = useCallback(async () => {
     // Don't hide Expo splash screen here - let the custom splash handle it
@@ -86,16 +57,11 @@ function AppContent(): React.ReactElement {
     // Initialize notification service
     NotificationService.initialize();
 
-    // Connect to WebSocket when user is available
-    if (user?.id) {
-      console.log('🔗 Connecting to WebSocket for user:', user.id);
-      NotificationService.connectWebSocket(user.id);
-    }
+    // WebSocket disabled - using push notifications and polling instead
+    // Real-time updates handled via push notifications and simple polling
 
-    // Cleanup WebSocket on unmount
     return () => {
-      console.log('🔌 Disconnecting WebSocket on app cleanup');
-      NotificationService.disconnectWebSocket();
+      // No WebSocket cleanup needed
     };
 
     console.log('🌐 Setting up global deep link handler');

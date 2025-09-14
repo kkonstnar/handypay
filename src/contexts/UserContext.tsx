@@ -240,56 +240,51 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initializeUser();
   }, []);
 
-  // Ban status monitoring via push notifications - no more polling!
+  // Ban status monitoring - simple polling approach
   useEffect(() => {
     if (!user?.id) return;
 
-    const handleBanNotification = async (banDetails: any) => {
+    const checkBanStatus = async () => {
       try {
-        console.log('🚫 Received ban notification via push:', banDetails);
+        console.log('🔍 Checking ban status for user:', user.id);
+        const response = await fetch(`https://handypay-backend.handypay.workers.dev/api/users/ban-status/${user.id}`);
 
-        // Update user state immediately
-        const updatedUser = {
-          ...user,
-          isBanned: true,
-          banReason: banDetails?.reason,
-          banType: banDetails?.type,
-        };
+        if (response.ok) {
+          const banData = await response.json();
 
-        setUserState(updatedUser);
-        await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
+          if (banData.isBanned && !user.isBanned) {
+            console.log('🚫 User is banned, updating state');
 
-        // Show the ban notification
-        const { showBanNotification } = await import('../utils/banNotification');
-        showBanNotification(banDetails);
+            const updatedUser = {
+              ...user,
+              isBanned: true,
+              banReason: banData.banReason,
+              banType: banData.banType,
+            };
 
+            setUserState(updatedUser);
+            await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
+
+            // Show the ban notification toast
+            const { showBanNotification } = await import('../utils/banNotification');
+            showBanNotification({
+              reason: banData.banReason,
+              type: banData.banType
+            });
+          }
+        }
       } catch (error) {
-        console.error('❌ Error handling ban notification:', error);
+        console.error('❌ Error checking ban status:', error);
       }
     };
 
-    // Import notification service and set up listener
-    const setupNotificationListener = async () => {
-      try {
-        const { NotificationService } = await import('../services/notificationService');
-        NotificationService.setupBanNotificationListener(handleBanNotification);
-        console.log('🔔 Ban notification listener set up');
-      } catch (error) {
-        console.error('❌ Error setting up ban notification listener:', error);
-      }
-    };
+    // Check immediately when component mounts
+    checkBanStatus();
 
-    setupNotificationListener();
+    // Then check every 60 seconds (less frequent than 30s polling)
+    const interval = setInterval(checkBanStatus, 60000);
 
-    // Cleanup function
-    return () => {
-      try {
-        const { NotificationService } = require('../services/notificationService');
-        NotificationService.cleanupBanNotificationListeners();
-      } catch (error) {
-        console.error('❌ Error cleaning up ban notification listeners:', error);
-      }
-    };
+    return () => clearInterval(interval);
   }, [user?.id]);
 
   const setUser = async (userData: UserData | null) => {
