@@ -6,8 +6,8 @@ import IPhoneGreySvg from '../../../assets/IPhone_12_Pro_Line_Grey.svg';
 import HandyPayLogo from '../../../assets/handypay.svg';
 import QRCodeSvg from '../../../assets/qr-code-https---handyhurry-c-2025-08-20T12-23-41.svg';
 import GoogleLogo from '../../../assets/google.svg';
-import SystemBannerContainer from '../../components/ui/SystemBannerContainer';
 import EmailLoginModal from '../../components/modals/EmailLoginModal';
+import { useNetwork } from '../../contexts/NetworkContext';
 
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/RootNavigator';
@@ -121,12 +121,11 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
   const [loading, setLoading] = useState(false);
   const [provider, setProvider] = useState<string | null>(null);
   const [hasNavigated, setHasNavigated] = useState(false);
-  const [isConnected, setIsConnected] = useState(true);
-  const [showNetworkBanner, setShowNetworkBanner] = useState(false);
   const [showEmailLogin, setShowEmailLogin] = useState(false);
   const [checkingOnboarding, setCheckingOnboarding] = useState(false);
 
   const { user, setUser, updateLastLogin } = useUser();
+  const { isConnected, showNetworkBanner } = useNetwork();
 
   // Helper function to handle navigation after authentication
   const handlePostAuthNavigation = async (userData: any) => {
@@ -165,66 +164,7 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
     }
   }, [user]);
 
-  // Simple network connectivity monitoring
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null;
-
-    const checkConnectivity = async () => {
-      try {
-        // Simple connectivity check using fetch
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-
-        const response = await fetch('https://www.google.com/favicon.ico', {
-          method: 'HEAD',
-          cache: 'no-cache',
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-        const isConnected = response.ok;
-
-        console.log('🌐 Network check result:', { isConnected });
-
-        setIsConnected(isConnected);
-
-        // Show banner when connection is lost
-        if (!isConnected && !showNetworkBanner) {
-          console.log('📡 Showing network banner - connection lost');
-          setShowNetworkBanner(true);
-        }
-        // Hide banner when connection is restored
-        else if (isConnected && showNetworkBanner) {
-          console.log('📡 Hiding network banner - connection restored');
-          setShowNetworkBanner(false);
-        }
-      } catch (error) {
-        console.log('🌐 Network check failed:', error instanceof Error ? error.message : 'Unknown error');
-        const isConnected = false;
-
-        setIsConnected(isConnected);
-
-        // Show banner when connection is lost
-        if (!showNetworkBanner) {
-          console.log('📡 Showing network banner - connection lost');
-          setShowNetworkBanner(true);
-        }
-      }
-    };
-
-    // Delay initial connectivity check to prevent flash on mount
-    setTimeout(() => checkConnectivity(), 1000);
-
-    // Check connectivity every 30 seconds to prevent flashes (was 10 seconds)
-    intervalId = setInterval(checkConnectivity, 30000);
-
-    // Cleanup interval on unmount
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    };
-  }, [showNetworkBanner]);
+  // Network monitoring now handled by NetworkContext via NetInfo
 
   // COMMENTED OUT: Only handle navigation for completely new users who just signed up
   // Existing users are handled by RootNavigator based on their onboarding status
@@ -571,13 +511,7 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      {showNetworkBanner && (
-        <SystemBannerContainer
-          message="No internet connection. Please check your network."
-          type="warning"
-          initiallyVisible={true}
-        />
-      )}
+      {/* Network banner now handled globally by NetworkContext */}
 
       {/* Loading overlay for onboarding checks */}
       {checkingOnboarding && (
