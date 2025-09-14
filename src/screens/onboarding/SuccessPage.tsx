@@ -148,7 +148,11 @@ export default function SuccessPage({ navigation }: SuccessPageProps): React.Rea
     // Only Stripe webhooks should update the completion status in the backend
     // The frontend should always check the backend for the real status
 
-    navigation.replace('HomeTabs');
+    // Reset navigation stack to prevent going back to legal pages
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'HomeTabs' }],
+    });
   };
 
   const handleRefreshStatus = () => {

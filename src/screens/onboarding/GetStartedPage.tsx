@@ -15,7 +15,6 @@ import { RootStackParamList } from '../../navigation/RootNavigator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUser } from '../../contexts/UserContext';
 import { stripeOnboardingManager } from '../../services/StripeOnboardingService';
-import { NotificationService } from '../../services/notificationService';
 import Toast from 'react-native-toast-message';
 
 // Helper functions for Stripe onboarding
@@ -79,11 +78,14 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
   const [currentStripeAccountId, setCurrentStripeAccountId] = useState<string | null>(null);
   const [isOnboardingInProgress, setIsOnboardingInProgress] = useState(false);
   const [hasIncompleteOnboarding, setHasIncompleteOnboarding] = useState(false);
+  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  const [pollingAttempts, setPollingAttempts] = useState(0);
+  const [maxPollingAttempts] = useState(20); // Poll for up to 20 seconds (optimized)
   const [onboardingCompleted, setOnboardingCompleted] = useState(false);
   const [processingCompletion, setProcessingCompletion] = useState(false); // New state for processing phase
   const [showRowLoading, setShowRowLoading] = useState(false); // Show loading spinner in row items
 
-  // Check for incomplete onboarding on mount and connect to WebSocket
+  // Check for incomplete onboarding on mount
   useEffect(() => {
     const checkIncompleteOnboarding = async () => {
       if (!user) return;
@@ -103,24 +105,6 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
     };
 
     checkIncompleteOnboarding();
-
-    // WebSocket disabled - using push notifications instead
-    // Push notifications provide better real-time updates than WebSockets
-    // if (user?.id) {
-    //   console.log('🔗 Connecting to WebSocket for onboarding updates...');
-    //   NotificationService.connectWebSocket(user.id);
-    // }
-
-    // Listen for onboarding completion events (push notifications handle this now)
-    // const cleanup = NotificationService.onOnboardingComplete(() => {
-    //   console.log('🎉 Onboarding completion detected via WebSocket');
-    //   completeOnboarding();
-    // });
-
-    return () => {
-      // cleanup();
-      // WebSocket disabled - push notifications are handling real-time updates
-    };
   }, [user]);
 
   // Deep link handling for Stripe onboarding completion
@@ -138,8 +122,9 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         setLoading(true);
         setShowRowLoading(true); // Show loading spinner in row items
 
-        // Push notifications will handle real-time updates - no need to poll
-        console.log('🔄 Onboarding started - push notifications will handle updates...');
+        // Start polling for onboarding status with immediate feedback
+        // Don't set isOnboardingInProgress yet - keep in loading state
+        startPollingOnboardingStatus();
       } else if (event.url.includes('handypay://stripe/error')) {
         console.log('❌ Stripe onboarding error detected');
         setIsOnboardingInProgress(false);
@@ -168,14 +153,133 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
 
     return () => {
       subscription?.remove();
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
     };
   }, [user, isOnboardingInProgress]);
 
-  // Push notifications handle real-time onboarding updates - no polling needed
+  // Polling function for onboarding status
+  const startPollingOnboardingStatus = () => {
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+    }
+
+    console.log('🔄 Starting polling for onboarding status...');
+    setPollingAttempts(0);
+
+    const interval = setInterval(async () => {
+      setPollingAttempts(prev => {
+        const newAttempts = prev + 1;
+        console.log(`🔍 Polling attempt ${newAttempts}/${maxPollingAttempts}`);
+
+        if (newAttempts >= maxPollingAttempts) {
+          console.log('⏰ Polling timeout reached, stopping...');
+          clearInterval(interval);
+          setPollingInterval(null);
+        setIsOnboardingInProgress(false);
+        setLoading(false);
+        setProcessingCompletion(false);
+        setShowRowLoading(false);
+        setShowRowLoading(false);
+        setHasIncompleteOnboarding(true);
+          Toast.show({
+            type: 'success',
+            text1: 'Still Processing',
+            text2: 'Your onboarding is taking longer than expected. Please check back in a few minutes.'
+          });
+          return newAttempts;
+        }
+
+        checkOnboardingStatus();
+        return newAttempts;
+      });
+    }, 1500 + Math.random() * 500); // Poll every 1.5-2 seconds with randomization
+
+    setPollingInterval(interval);
+  };
+
+  // Consolidated status checking
+  const checkOnboardingStatus = async () => {
+    if (!user) return;
+
+    try {
+      console.log('🔍 Checking onboarding status...');
+      const userData = await fetchUserAccount(user.id);
+
+      if (userData.stripe_onboarding_completed) {
+        console.log('✅ Onboarding completed, navigating to SuccessPage');
+
+        completeOnboarding();
+
+        return true; // Indicate completion
+      }
+
+      const accountId = userData.stripe_account_id || userData.stripeAccountId;
+      if (accountId) {
+        const statusData = await fetchAccountStatus(accountId);
+        const chargesEnabled = statusData.accountStatus?.charges_enabled;
+
+        if (chargesEnabled) {
+          console.log('✅ Onboarding completed (charges enabled), navigating to SuccessPage');
+
+          // If charges are enabled but backend isn't updated yet, try to force update
+          if (!userData.stripe_onboarding_completed) {
+            console.log('🔄 Charges enabled but backend not updated - attempting manual update...');
+            try {
+              console.log('🔄 Calling manual backend update:', {
+                url: 'https://handypay-backend.handypay.workers.dev/api/stripe/complete-onboarding',
+                userId: user.id,
+                stripeAccountId: accountId
+              });
+
+              const response = await fetch('https://handypay-backend.handypay.workers.dev/api/stripe/complete-onboarding', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  userId: user.id,
+                  stripeAccountId: accountId
+                }),
+              });
+
+              const result = await response.json();
+              console.log('✅ Manual backend update response:', {
+                status: response.status,
+                result
+              });
+
+              if (response.ok && result.success) {
+                console.log('🎉 Manual backend update successful');
+              } else {
+                console.error('❌ Manual backend update failed with result:', result);
+              }
+            } catch (updateError) {
+              console.error('❌ Manual backend update network error:', updateError);
+            }
+          }
+
+          completeOnboarding();
+
+          return true; // Indicate completion
+        }
+      }
+
+      return false; // Not completed yet
+    } catch (error) {
+      console.error('❌ Error checking onboarding status:', error);
+      return false;
+    }
+  };
 
   // Helper function to handle onboarding completion
   const completeOnboarding = () => {
     console.log('🎉 Completing onboarding - clearing all states');
+
+    // Clear polling if active
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+      setPollingInterval(null);
+    }
 
     // Clear all onboarding states immediately
     setIsOnboardingInProgress(false);
@@ -202,10 +306,15 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
   const cancelOnboarding = () => {
     console.log('🗑️ Cancelling onboarding process...');
 
+    // Clear polling if active
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+      setPollingInterval(null);
+    }
+
     setIsOnboardingInProgress(false);
     setLoading(false);
-    setProcessingCompletion(false);
-    setShowRowLoading(false);
+    setProcessingCompletion(false); // Clear processing state
     setHasIncompleteOnboarding(true); // Mark as incomplete so button shows "Continue Onboarding"
     Toast.show({
       type: 'success',
@@ -289,19 +398,22 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         if (result.type === 'cancel') {
           console.log('🚫 User cancelled Stripe onboarding in browser');
           setIsOnboardingInProgress(false);
+          setLoading(false);
+          setProcessingCompletion(false);
+          setShowRowLoading(false);
           setHasIncompleteOnboarding(true);
           Toast.show({
-            type: 'success',
-      text1: 'Onboarding Cancelled',
-      text2: 'You can continue onboarding anytime by tapping the card above'
+            type: 'info',
+            text1: 'Onboarding Paused',
+            text2: 'You can continue where you left off anytime'
           });
-          setLoading(false);
           return;
         }
 
         setIsOnboardingInProgress(true);
         setLoading(false); // Clear loading state since browser is closed
-        // Push notifications handle real-time updates - no polling needed
+        setShowRowLoading(true); // Show loading in row items during polling
+        startPollingOnboardingStatus();
       } catch (error) {
         console.error('Error continuing Stripe onboarding:', error);
         Alert.alert('Error', 'Unable to continue Stripe onboarding');
@@ -360,19 +472,22 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
           if (result.type === 'cancel') {
             console.log('🚫 User cancelled Stripe onboarding in browser');
             setIsOnboardingInProgress(false);
+            setLoading(false);
+            setProcessingCompletion(false);
+            setShowRowLoading(false);
             setHasIncompleteOnboarding(true);
             Toast.show({
-              type: 'success',
-              text1: 'Onboarding Cancelled',
-              text2: 'You can continue onboarding anytime by tapping the card above'
+              type: 'info',
+              text1: 'Onboarding Paused',
+              text2: 'You can continue where you left off anytime'
             });
-            setLoading(false);
             return;
           }
 
           setIsOnboardingInProgress(true);
           setLoading(false); // Clear loading state since browser is closed
-          // Push notifications handle real-time updates - no polling needed
+          setShowRowLoading(true); // Show loading in row items during polling
+          startPollingOnboardingStatus();
         } catch (error) {
           console.error('Error opening Stripe URL:', error);
           Alert.alert('Error', 'Unable to open Stripe onboarding link');
@@ -424,19 +539,22 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
       if (result.type === 'cancel') {
         console.log('🚫 User cancelled Stripe onboarding in browser');
         setIsOnboardingInProgress(false);
+        setLoading(false);
+        setProcessingCompletion(false);
+        setShowRowLoading(false);
         setHasIncompleteOnboarding(true);
         Toast.show({
-          type: 'success',
-      text1: 'Onboarding Cancelled',
-      text2: 'You can continue onboarding anytime by tapping the card above'
+          type: 'info',
+          text1: 'Onboarding Paused',
+          text2: 'You can continue where you left off anytime'
         });
-        setLoading(false);
         return;
       }
 
       setIsOnboardingInProgress(true);
       setLoading(false); // Clear loading state since browser is closed
-      // WebSocket handles real-time updates - no polling needed
+      setShowRowLoading(true); // Show loading in row items during polling
+      startPollingOnboardingStatus();
     } catch (error) {
       console.error('Stripe onboarding error:', error);
       Alert.alert(

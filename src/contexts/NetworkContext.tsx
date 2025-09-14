@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
 import SystemBannerContainer from '../components/ui/SystemBannerContainer';
@@ -34,73 +34,56 @@ export const NetworkProvider: React.FC<NetworkProviderProps> = ({ children }) =>
   useEffect(() => {
     console.log('🌐 Setting up NetInfo network monitoring...');
 
-    let unsubscribe: (() => void) | null = null;
+    // Subscribe to network state changes
+    const unsubscribe = NetInfo.addEventListener(state => {
+      console.log('🌐 Network state changed:', {
+        isConnected: state.isConnected,
+        isInternetReachable: state.isInternetReachable,
+        type: state.type,
+        timestamp: new Date().toLocaleTimeString()
+      });
 
-    const setupNetInfo = async () => {
-      try {
-        // Subscribe to network state changes
-        unsubscribe = NetInfo.addEventListener(state => {
-          const connected = state.isConnected ?? false;
-          const hasInternetReachability = state.isInternetReachable ?? true;
-          
-          // Consider connected only if both conditions are true
-          const actuallyConnected = connected && hasInternetReachability;
+      const connected = state.isConnected === true && state.isInternetReachable !== false;
+      
+      // Only update if there's actually a change
+      if (connected !== isConnected) {
+        console.log(`🌐 Network status changed: ${isConnected ? 'connected' : 'disconnected'} → ${connected ? 'connected' : 'disconnected'}`);
+        setIsConnected(connected);
+      }
 
-          console.log('🌐 Network state changed:', {
-            type: state.type,
-            isConnected: connected,
-            isInternetReachable: hasInternetReachability,
-            actuallyConnected,
-            timestamp: new Date().toLocaleTimeString()
-          });
-
-          setIsConnected(actuallyConnected);
-
-          // Show banner when connection is lost
-          if (!actuallyConnected && !showNetworkBanner) {
-            console.log('📡 Showing network banner - connection lost');
-            setShowNetworkBanner(true);
-          }
-          // Hide banner when connection is restored
-          else if (actuallyConnected && showNetworkBanner) {
-            console.log('📡 Hiding network banner - connection restored');
-            setShowNetworkBanner(false);
-          }
-        });
-
-        // Get initial network state
-        const state = await NetInfo.fetch();
-        const connected = state.isConnected ?? false;
-        const hasInternetReachability = state.isInternetReachable ?? true;
-        const actuallyConnected = connected && hasInternetReachability;
-
-        console.log('🌐 Initial network state:', {
-          type: state.type,
-          isConnected: connected,
-          isInternetReachable: hasInternetReachability,
-          actuallyConnected
-        });
-
-        setIsConnected(actuallyConnected);
-        setShowNetworkBanner(!actuallyConnected);
-
-      } catch (error) {
-        console.warn('⚠️ NetInfo not available, network monitoring disabled until rebuild:', error);
-        
-        // Just assume connected and hide banner until NetInfo is available
-        setIsConnected(true);
+      // Show banner immediately when connection is lost
+      if (!connected && !showNetworkBanner) {
+        console.log('📡 Showing network banner - connection lost');
+        setShowNetworkBanner(true);
+      }
+      // Hide banner immediately when connection is restored
+      else if (connected && showNetworkBanner) {
+        console.log('📡 Hiding network banner - connection restored');
         setShowNetworkBanner(false);
       }
-    };
+    });
 
-    setupNetInfo();
+    // Get initial network state
+    NetInfo.fetch().then(state => {
+      console.log('🌐 Initial network state:', {
+        isConnected: state.isConnected,
+        isInternetReachable: state.isInternetReachable,
+        type: state.type
+      });
+
+      const connected = state.isConnected === true && state.isInternetReachable !== false;
+      setIsConnected(connected);
+
+      // Don't show banner on initial load unless definitely disconnected
+      if (!connected) {
+        setShowNetworkBanner(true);
+      }
+    });
 
     // Cleanup subscription on unmount
     return () => {
-      if (unsubscribe) {
-        console.log('🌐 Cleaning up NetInfo subscription');
-        unsubscribe();
-      }
+      console.log('🌐 Cleaning up NetInfo subscription');
+      unsubscribe();
     };
   }, [showNetworkBanner]);
 

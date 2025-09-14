@@ -35,11 +35,24 @@ function AppContent(): React.ReactElement {
     },
   });
 
-  // Ban detection now uses simple polling in UserContext
-  // No need for push notification listener for bans
+  // Set up ban notification listener
+  useEffect(() => {
+    if (user?.id) {
+      const { NotificationService } = require('./src/services/notificationService');
 
-  // WebSocket disabled - using push notifications and polling instead
-  // Real-time updates handled via push notifications and simple polling
+      const handleBanNotification = (notificationBanDetails: any) => {
+        console.log('🚫 Received ban notification:', notificationBanDetails);
+        // The useBanProtection hook will handle the state updates
+        // This is just for logging additional context
+      };
+
+      NotificationService.setupBanNotificationListener(handleBanNotification);
+
+      return () => {
+        NotificationService.cleanupBanNotificationListeners();
+      };
+    }
+  }, [user?.id]);
 
   const onLayoutRootView = useCallback(async () => {
     // Don't hide Expo splash screen here - let the custom splash handle it
@@ -56,13 +69,6 @@ function AppContent(): React.ReactElement {
 
     // Initialize notification service
     NotificationService.initialize();
-
-    // WebSocket disabled - using push notifications and polling instead
-    // Real-time updates handled via push notifications and simple polling
-
-    return () => {
-      // No WebSocket cleanup needed
-    };
 
     console.log('🌐 Setting up global deep link handler');
 
