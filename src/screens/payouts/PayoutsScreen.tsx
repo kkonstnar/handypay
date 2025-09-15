@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, SafeAreaView, Alert } from 'react-native';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, SafeAreaView, Alert, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +16,7 @@ import LegalModal from '../../components/modals/LegalModal';
 import AuthenticationMethodModal from '../../components/modals/AuthenticationMethodModal';
 import { apiService } from '../../services';
 import { useApi } from '../../hooks/useApi';
-import { PayoutHistoryItem, Payout, Balance } from '../../types';
+import { PayoutHistoryItem, Payout, Balance, Transaction } from '../../types';
 import { formatDate } from '../../utils/helpers';
 
 import Toast from 'react-native-toast-message';
@@ -28,6 +28,11 @@ export default function PayoutsScreen(): React.ReactElement {
   const [selectedPayout, setSelectedPayout] = useState<PayoutHistoryItem | null>(null);
   const [showAccountModal, setShowAccountModal] = useState(false);
 
+  // Memoize user data to prevent unnecessary re-renders
+  const userInitials = useMemo(() => getUserInitials(user), [user]);
+  const userAvatarUri = useMemo(() => user?.avatarUri, [user?.avatarUri]);
+  const userData = user; // Explicit typing to help TypeScript
+
   const [showReportBugModal, setShowReportBugModal] = useState(false);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
   const [showLegalModal, setShowLegalModal] = useState(false);
@@ -35,6 +40,10 @@ export default function PayoutsScreen(): React.ReactElement {
   const [currentAuthMethod, setCurrentAuthMethod] = useState<'apple' | 'google'>(user?.authProvider || 'apple');
   const [createPayoutLoading, setCreatePayoutLoading] = useState(false);
   const [showSafetyPinModal, setShowSafetyPinModal] = useState(false);
+  const [isInfoDismissed, setIsInfoDismissed] = useState(true);
+  const [showInfoButton, setShowInfoButton] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
 
 
 
@@ -70,6 +79,22 @@ export default function PayoutsScreen(): React.ReactElement {
     }
   });
 
+  // Fetch transactions to calculate real payable balance from completed transactions
+  const {
+    data: transactionsData,
+    loading: transactionsLoading,
+    error: transactionsError,
+    refetch: refetchTransactions
+  } = useApi<Transaction[]>(() => {
+    if (user?.id) {
+      console.log('📊 Fetching transactions for payouts balance calculation:', user.id);
+      return apiService.getUserTransactions(user.id);
+    } else {
+      console.log('⚠️ No authenticated user data available for transactions fetch');
+      return Promise.resolve({ data: [], success: true });
+    }
+  });
+
   // Use real Stripe API calls for next payout data
   const {
     data: nextPayoutData,
@@ -93,17 +118,48 @@ export default function PayoutsScreen(): React.ReactElement {
     }
   });
 
-  // Transform balance data for display
+  // Calculate balance from completed/approved transactions instead of Stripe balance
   const balance = React.useMemo(() => {
-    if (balanceData && typeof balanceData === 'object' && 'balance' in balanceData) {
-      return balanceData;
+    if (!transactionsData || !Array.isArray(transactionsData)) {
+      return { balance: 0, currency: 'JMD' };
     }
-    return { balance: 0, currency: 'JMD' };
-  }, [balanceData]);
+
+    // Sum up all completed transactions that represent received payments
+    const completedTransactions = transactionsData.filter(transaction => 
+      transaction.status === 'completed' && 
+      (transaction.type === 'received' || transaction.type === 'payment_link' || transaction.type === 'qr_payment')
+    );
+
+    const totalBalance = completedTransactions.reduce((sum, transaction) => {
+      return sum + (transaction.amount / 100); // Convert from cents to dollars
+    }, 0);
+
+    // Get currency from the most recent transaction, fallback to JMD
+    const currency = completedTransactions.length > 0 && completedTransactions[0].currency 
+      ? completedTransactions[0].currency 
+      : 'JMD';
+
+    console.log('💰 Calculated payable balance from transactions:', {
+      totalBalance,
+      currency,
+      completedTransactionsCount: completedTransactions.length
+    });
+
+    return { balance: totalBalance, currency };
+  }, [transactionsData]);
 
   // Transform next payout data for display
   const nextPayout = React.useMemo(() => {
     if (nextPayoutData && typeof nextPayoutData === 'object') {
+      // Validate date format
+      if (nextPayoutData.date) {
+        const dateObj = new Date(nextPayoutData.date);
+        if (isNaN(dateObj.getTime())) {
+          console.error('❌ Invalid date format in next payout:', nextPayoutData.date);
+          return null;
+        }
+      }
+
       return nextPayoutData;
     }
     return null;
@@ -141,12 +197,23 @@ export default function PayoutsScreen(): React.ReactElement {
     });
   }, [apiPayouts]);
 
+  // Initialize info button visibility (no auto-dismiss)
+  useEffect(() => {
+    setShowInfoButton(true);
+  }, []);
+
+  // Handle info button press to toggle text display
+  const handlePayoutInfoPress = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setIsInfoDismissed(false); // Show full text again
+  };
+
   // Handle creating a new payout
   const handleCreatePayout = async (amount: number, bankAccountId: string) => {
     try {
       setCreatePayoutLoading(true);
       const response = await apiService.createPayout(amount, bankAccountId);
-      
+
       if (response.success) {
         Alert.alert('Success', 'Payout request submitted successfully');
         refetchPayouts();
@@ -179,10 +246,10 @@ export default function PayoutsScreen(): React.ReactElement {
     setSelectedPayout(item);
   };
 
-  const handleAccountPress = () => {
+  const handleAccountPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setShowAccountModal(true);
-  };
+  }, []);
 
   const closeAccountModal = () => {
     setShowAccountModal(false);
@@ -208,23 +275,50 @@ export default function PayoutsScreen(): React.ReactElement {
     );
   };
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        refetchPayouts(),
+        refetchBalance(),
+        refetchTransactions(),
+        refetchNextPayout()
+      ]);
+    } catch (error) {
+      console.error('Error refreshing payouts data:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetchPayouts, refetchBalance, refetchTransactions, refetchNextPayout]);
+
   return (
     <View style={[styles.container, { paddingTop: insets.top + 16 }]}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Payouts</Text>
-        <Avatar onPress={handleAccountPress} initials={getUserInitials(user)} imageUri={user?.avatarUri} />
+        <Avatar onPress={handleAccountPress} initials={userInitials} imageUri={userAvatarUri} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#3AB75C"
+            colors={["#3AB75C"]}
+          />
+        }
+      >
         {/* Payable Balance Card */}
         <View style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Payable balance</Text>
           <View style={styles.balanceRow}>
             <Text style={styles.balanceAmount}>
-              {balanceLoading ? (
+              {transactionsLoading ? (
                 'Loading...'
-              ) : balanceError ? (
+              ) : transactionsError ? (
                 'Setup required'
               ) : isBalanceVisible ? (
                 `$${balance?.balance?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'}`
@@ -233,9 +327,16 @@ export default function PayoutsScreen(): React.ReactElement {
               )}
             </Text>
             <Text style={styles.balanceCurrency}>
-              {balanceLoading ? '' : balance?.currency?.toLowerCase() || 'jmd'}
+              {transactionsLoading ? '' : balance?.currency?.toLowerCase() || 'jmd'}
             </Text>
           </View>
+
+          {/* Helper text for zero balance */}
+          {!transactionsLoading && !transactionsError && balance?.balance === 0 && (
+            <Text style={styles.balanceHelper}>
+              No payments received yet. Balance will update when customers pay your payment links.
+            </Text>
+          )}
           <TouchableOpacity
             onPress={async () => {
               // Multiple exaggerated haptic feedback for balance toggle
@@ -247,10 +348,10 @@ export default function PayoutsScreen(): React.ReactElement {
             style={styles.balanceToggle}
             activeOpacity={0.7}
           >
-            <Ionicons 
-              name={isBalanceVisible ? "eye-off" : "eye"} 
-              size={20} 
-              color="#9ca3af" 
+            <Ionicons
+              name={isBalanceVisible ? "eye-off" : "eye"}
+              size={20}
+              color="#9ca3af"
             />
           </TouchableOpacity>
         </View>
@@ -281,14 +382,48 @@ export default function PayoutsScreen(): React.ReactElement {
             </Text>
           </View>
 
-          <Text style={styles.payoutDescription}>
-            {nextPayoutError
-              ? 'Complete your Stripe setup to start receiving automatic payouts.'
-              : nextPayout
-                ? `Payouts are automatically processed ${nextPayout.stripeSchedule && `${nextPayout.stripeSchedule}. `}Processing typically takes ${nextPayout.estimatedProcessingDays || 5} business day${nextPayout.estimatedProcessingDays === 1 ? '' : 's'}.`
-                : 'Set up your bank account to start receiving automatic payouts.'
-            }
-          </Text>
+          {/* Dismissable payout info */}
+          {nextPayoutError ? (
+            <Text style={styles.payoutDescription}>
+              Complete your Stripe setup to start receiving automatic payouts.
+            </Text>
+          ) : nextPayout ? (
+            allPayouts.length === 0 ? (
+              isInfoDismissed ? (
+                // Show shortened text with inline info button
+                <TouchableOpacity 
+                  onPress={handlePayoutInfoPress} 
+                  activeOpacity={0.7}
+                  style={styles.payoutInfoContainer}
+                >
+                  <View style={styles.inlineTextRow}>
+                    <Text style={[styles.payoutDescription, styles.inlineText]}>
+                      Payouts are processed {nextPayout.stripeSchedule && `${nextPayout.stripeSchedule}. `}Processing takes {nextPayout.estimatedProcessingDays || 5} business day{nextPayout.estimatedProcessingDays === 1 ? '' : 's'}. (Tap to expand)
+                    </Text>
+                    <View style={styles.inlineInfoButton}>
+                      <Ionicons name="information" size={12} color="#6b7280" />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ) : (
+                // Show full text initially (tap to dismiss)
+                <TouchableOpacity onPress={() => setIsInfoDismissed(true)} activeOpacity={0.7}>
+                  <Text style={styles.payoutDescription}>
+                    First payout takes 7 days after your first payment is received. Subsequent payouts are processed {nextPayout.stripeSchedule && `${nextPayout.stripeSchedule}. `}Processing typically takes {nextPayout.estimatedProcessingDays || 5} business day{nextPayout.estimatedProcessingDays === 1 ? '' : 's'}. (Tap to dismiss)
+                  </Text>
+                </TouchableOpacity>
+              )
+            ) : (
+              // Regular payout description for users with existing payouts
+              <Text style={styles.payoutDescription}>
+                Payouts are automatically processed {nextPayout.stripeSchedule && `${nextPayout.stripeSchedule}. `}Processing typically takes {nextPayout.estimatedProcessingDays || 5} business day{nextPayout.estimatedProcessingDays === 1 ? '' : 's'}.
+              </Text>
+            )
+          ) : (
+            <Text style={styles.payoutDescription}>
+              Set up your bank account to start receiving automatic payouts.
+            </Text>
+          )}
         </View>
 
         {/* Payout History */}
@@ -357,7 +492,7 @@ export default function PayoutsScreen(): React.ReactElement {
         >
           <SafeAreaView style={styles.detailsContainer}>
             <View style={styles.detailsHeader}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setSelectedPayout(null);
@@ -378,7 +513,7 @@ export default function PayoutsScreen(): React.ReactElement {
                 <Ionicons name="share" size={24} color="#007AFF" />
               </TouchableOpacity>
             </View>
-            
+
             <ScrollView style={styles.detailsContent} showsVerticalScrollIndicator={false}>
               {/* Amount */}
               <View style={styles.detailsAmountSection}>
@@ -388,7 +523,7 @@ export default function PayoutsScreen(): React.ReactElement {
                 <Text style={styles.detailsDescription}>Payout to Bank Account</Text>
                 <Text style={styles.detailsMerchant}>Ending **** {selectedPayout.accountEnding}</Text>
               </View>
-              
+
               {/* Status */}
               <View style={styles.detailsSection}>
                 <Text style={styles.detailsSectionTitle}>Status</Text>
@@ -401,39 +536,39 @@ export default function PayoutsScreen(): React.ReactElement {
                   </View>
                 </View>
               </View>
-              
+
               {/* Payout Information */}
               <View style={styles.detailsSection}>
                 <Text style={styles.detailsSectionTitle}>Payout Information</Text>
-                
+
                 <View style={styles.detailsRow}>
                   <Text style={styles.detailsLabel}>Date</Text>
                   <Text style={styles.detailsValue}>
                     {formatDate(selectedPayout.date)}
                   </Text>
                 </View>
-                
+
                 <View style={styles.detailsRow}>
                   <Text style={styles.detailsLabel}>Type</Text>
                   <Text style={styles.detailsValue}>Bank Transfer</Text>
                 </View>
-                
+
                 <View style={styles.detailsRow}>
                   <Text style={styles.detailsLabel}>Account</Text>
                   <Text style={styles.detailsValue}>Bank account **** {selectedPayout.accountEnding}</Text>
                 </View>
-                
+
                 <View style={styles.detailsRow}>
                   <Text style={styles.detailsLabel}>Processing Time</Text>
                   <Text style={styles.detailsValue}>1-2 business days</Text>
                 </View>
-                
+
                 <View style={styles.detailsRow}>
                   <Text style={styles.detailsLabel}>Transaction ID</Text>
                   <Text style={styles.detailsValueMono}>PO-{selectedPayout.id}_{selectedPayout.accountEnding}</Text>
                 </View>
               </View>
-              
+
               {/* Actions */}
               <View style={styles.detailsActions}>
                 <TouchableOpacity
@@ -468,8 +603,8 @@ export default function PayoutsScreen(): React.ReactElement {
             <AccountModal
         visible={showAccountModal}
         onClose={closeAccountModal}
-        userName={getUserDisplayName(user)}
-        userInitials={getUserInitials(user)}
+        userName={getUserDisplayName(userData)}
+        userInitials={userInitials}
         memberSince={user?.memberSince ? (() => {
           const date = new Date(user.memberSince);
           return !isNaN(date.getTime()) ? date.toLocaleDateString() : undefined;
@@ -482,17 +617,17 @@ export default function PayoutsScreen(): React.ReactElement {
         onShowAuthenticationMethod={() => setShowAuthenticationMethodModal(true)}
       />
 
-      <ReportBugModal 
+      <ReportBugModal
         visible={showReportBugModal}
         onClose={() => setShowReportBugModal(false)}
       />
 
-      <LanguageModal 
+      <LanguageModal
         visible={showLanguageModal}
         onClose={() => setShowLanguageModal(false)}
       />
 
-      <LegalModal 
+      <LegalModal
         visible={showLegalModal}
         onClose={() => setShowLegalModal(false)}
       />
@@ -588,6 +723,14 @@ const styles = StyleSheet.create({
     right: 20,
     padding: 4
   },
+  balanceHelper: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 8,
+    lineHeight: 16,
+    fontFamily: 'DMSans-Medium',
+    textAlign: 'left'
+  },
   nextPayoutCard: {
     backgroundColor: '#ffffff',
     borderRadius: 6,
@@ -629,6 +772,28 @@ const styles = StyleSheet.create({
     marginTop: 8,
     letterSpacing: -0.5,
     fontFamily: 'DMSans-Medium'
+  },
+  payoutInfoContainer: {
+    marginTop: 8,
+  },
+  inlineTextRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    flexWrap: 'wrap',
+  },
+  inlineText: {
+    marginTop: 0, // Override marginTop from payoutDescription for inline layout
+    flex: 1,
+  },
+  inlineInfoButton: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    backgroundColor: 'rgba(107, 114, 128, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+    marginBottom: 2, // Align with text baseline
   },
   historySection: {
     marginBottom: 32

@@ -128,11 +128,12 @@ export class ApiService {
   }
 
   /**
-   * Generic API request handler
+   * Generic API request handler with timeout
    */
   private async apiRequest<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    timeoutMs: number = 15000 // 15 second timeout
   ): Promise<ApiResponse<T>> {
     try {
       const url = `${this.baseURL}${endpoint}`;
@@ -174,13 +175,26 @@ export class ApiService {
           });
         }
 
+        // Create AbortController for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          console.log(
+            `⏰ Request timeout after ${timeoutMs}ms for ${endpoint}`
+          );
+          controller.abort();
+        }, timeoutMs);
+
         const data = await fetch(url, {
           method: options.method || "GET",
           headers: requestHeaders,
           body: options.body,
           credentials: "include",
+          signal: controller.signal,
           ...options,
         });
+
+        // Clear timeout on successful response
+        clearTimeout(timeoutId);
 
         console.log(`📡 API Response status: ${data.status}`, {
           ok: data.ok,
@@ -223,6 +237,18 @@ export class ApiService {
         };
       } catch (fetchError: any) {
         console.error(`❌ API Error:`, fetchError.message || fetchError);
+
+        // Handle timeout errors specifically
+        if (fetchError.name === "AbortError") {
+          console.log(
+            `⏰ Request timed out after ${timeoutMs}ms for ${endpoint}`
+          );
+          return {
+            data: null as T,
+            success: false,
+            error: `Request timeout - please try again`,
+          };
+        }
 
         // Handle authentication errors specifically
         if (
@@ -396,13 +422,15 @@ export class ApiService {
     }
 
     const response = await this.apiRequest<{
+      success: boolean;
       balance: number;
       currency: string;
       stripeBalance: any[];
+      error?: string;
     }>(`/api/stripe/balance/${userId}`);
 
-    // Transform response to match Balance interface
-    if (response.success && response.data) {
+    // Extract balance data from the response
+    if (response.success && response.data && "balance" in response.data) {
       return {
         data: {
           balance: response.data.balance,
@@ -414,9 +442,9 @@ export class ApiService {
     }
 
     return {
-      data: { balance: 0, currency: "USD" },
+      data: { balance: 0, currency: "JMD" },
       success: false,
-      error: "Failed to get balance",
+      error: response.error || "Failed to get balance",
     };
   }
 
@@ -430,6 +458,7 @@ export class ApiService {
       currency: string;
       bankAccountEnding: string;
       estimatedProcessingDays: number;
+      stripeSchedule?: string;
     } | null>
   > {
     if (!userId) {
@@ -440,14 +469,39 @@ export class ApiService {
       };
     }
 
-    return this.apiRequest<{
-      date: string;
-      amount: number;
-      currency: string;
-      bankAccountEnding: string;
-      estimatedProcessingDays: number;
-      stripeSchedule: string;
-    } | null>(`/api/stripe/next-payout/${userId}`);
+    const response = await this.apiRequest<{
+      success: boolean;
+      nextPayout?: {
+        date: string;
+        amount: number;
+        currency: string;
+        bankAccountEnding: string;
+        estimatedProcessingDays: number;
+        stripeSchedule: string;
+      };
+      error?: string;
+    }>(`/api/stripe/next-payout/${userId}`);
+
+    // Extract the nextPayout data from the response
+    if (response.success && response.data?.nextPayout) {
+      return {
+        data: response.data.nextPayout,
+        success: true,
+        message: response.message,
+      };
+    } else if (response.success && !response.data?.nextPayout) {
+      return {
+        data: null,
+        success: true,
+        message: "No next payout scheduled",
+      };
+    }
+
+    return {
+      data: null,
+      success: false,
+      error: response.error || "Failed to get next payout info",
+    };
   }
 
   /**

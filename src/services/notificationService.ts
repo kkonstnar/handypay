@@ -121,6 +121,8 @@ export class NotificationService {
       // Get unique device ID (using a simple hash for now)
       const deviceId = `device_${userData.id}_${deviceType}_${Date.now()}`;
 
+      console.log("🔄 Syncing push token to backend for user:", userData.id);
+
       const response = await fetch(
         "https://handypay-backend.handypay.workers.dev/api/push-notifications/token",
         {
@@ -128,7 +130,7 @@ export class NotificationService {
           headers: {
             "Content-Type": "application/json",
             "X-User-ID": userData.id,
-            "X-User-Provider": userData.authProvider,
+            "X-User-Provider": userData.authProvider || "google",
           },
           body: JSON.stringify({
             userId: userData.id,
@@ -143,9 +145,11 @@ export class NotificationService {
         const result = await response.json();
         console.log("✅ Push token synced to backend:", result.tokenId);
       } else {
+        const errorText = await response.text();
         console.warn(
           "⚠️ Failed to sync push token to backend:",
-          response.status
+          response.status,
+          errorText
         );
       }
     } catch (error) {

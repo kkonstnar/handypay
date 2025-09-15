@@ -107,6 +107,8 @@ export default function PaymentLinkModal({
           description: `Payment request `,
           amount: amountInCents,
           taskDetails: `Payment of $${amount.toFixed(2)} ${currency}`,
+          currency: currency, // Pass the selected currency
+          paymentSource: "payment_link_modal", // Mark as payment link modal
         }),
         timeoutPromise
       ]) as any;
@@ -125,34 +127,38 @@ export default function PaymentLinkModal({
     } catch (error) {
       console.error('❌ Error generating payment link:', error);
 
-      const errorMessage = error instanceof Error ? error.message : 'Failed to generate payment link';
-      setError(errorMessage);
+      const errorObj = error instanceof Error ? error : new Error('Unknown error');
+      let errorMessage = errorObj.message;
+      let userFriendlyMessage = 'Please check your Stripe setup and try again';
 
-      // Show error toast
+      // Provide more specific error messages based on common Stripe issues
+      if (errorMessage.includes('payment method') || errorMessage.includes('payment method types')) {
+        userFriendlyMessage = 'Payment methods not properly configured. Please check your Stripe account settings or contact support';
+      } else if (errorMessage.includes('account not ready')) {
+        userFriendlyMessage = 'Your Stripe account needs onboarding completion';
+      } else if (errorMessage.includes('destination') || errorMessage.includes('jamaica')) {
+        userFriendlyMessage = 'Jamaican accounts require destination charges setup. Contact support to configure your account';
+      } else if (errorMessage.includes('timeout')) {
+        userFriendlyMessage = 'Request timed out. Please try again';
+      } else if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
+        userFriendlyMessage = 'Authentication error. Please log out and log back in';
+      } else if (errorMessage.includes('500')) {
+        userFriendlyMessage = 'Server error. Please try again in a few minutes';
+      }
+
+      console.log('🔧 Error details:', {
+        originalError: errorMessage,
+        userFriendlyMessage,
+        userId: user.id
+      });
+
+      setError(userFriendlyMessage);
+
+      // Show single error toast with specific guidance
       Toast.show({
         type: 'error',
         text1: 'Payment Link Failed',
-        text2: errorMessage,
-      });
-
-      // Fallback to simple payment link
-      console.log('🔄 Creating fallback payment link...');
-      const fallbackLink = StripePaymentService.generateSimplePaymentLink(amount, currency, user.id);
-      const fallbackAmountInCents = StripePaymentService.dollarsToCents(amount);
-
-      setPaymentData({
-        id: `fallback-${Date.now()}`,
-        hosted_invoice_url: fallbackLink,
-        status: 'draft',
-        amount_due: fallbackAmountInCents,
-        payment_link: fallbackLink,
-      });
-
-      // Show fallback success message
-      Toast.show({
-        type: 'info',
-        text1: 'Using Basic Link',
-        text2: 'Complete Stripe setup for full features',
+        text2: userFriendlyMessage,
       });
     } finally {
       setLoading(false);
@@ -291,11 +297,6 @@ export default function PaymentLinkModal({
                     Status: {paymentData.status === 'open' ? 'Ready to pay' : paymentData.status}
                   </Text>
                 </View>
-                {paymentData.id.startsWith('fallback') && (
-                  <Text style={styles.fallbackNote}>
-                    Using temporary link. Complete Stripe setup for full features.
-                  </Text>
-                )}
               </View>
             </>
           )}
@@ -516,13 +517,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6b7280',
     marginLeft: 8,
-    fontFamily: 'DMSans-Medium',
-  },
-  fallbackNote: {
-    fontSize: 12,
-    color: '#F59E0B',
-    textAlign: 'center',
-    fontStyle: 'italic',
     fontFamily: 'DMSans-Medium',
   },
 

@@ -8,6 +8,8 @@ export interface PaymentLinkRequest {
   amount: number; // Amount in cents
   taskDetails?: string;
   dueDate?: string;
+  currency?: string; // Currency code (USD, JMD, etc.)
+  paymentSource?: "qr_generation" | "payment_link_modal"; // Track the source
 }
 
 export interface PaymentLinkResponse {
@@ -24,7 +26,7 @@ export class StripePaymentService {
     "https://handypay-backend.handypay.workers.dev/api/stripe";
 
   /**
-   * Create a Stripe payment link/invoice with destination charges
+   * Create a simple Stripe payment link that works reliably
    */
   static async createPaymentLink(
     request: PaymentLinkRequest
@@ -35,6 +37,7 @@ export class StripePaymentService {
         request.handyproUserId
       );
 
+      // Simplified approach - create a basic payment link that works
       const response = await fetch(`${this.BASE_URL}/create-payment-link`, {
         method: "POST",
         headers: {
@@ -50,11 +53,15 @@ export class StripePaymentService {
           amount: request.amount, // Amount in cents
           taskDetails: request.taskDetails,
           dueDate: request.dueDate,
+          currency: request.currency || "USD", // Use passed currency or default to USD
+          paymentSource: request.paymentSource || "payment_link_modal", // Pass payment source
+          // Remove destination charges complexity for now
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.error("❌ Backend error:", errorData);
         throw new Error(
           errorData.error || `HTTP ${response.status}: ${response.statusText}`
         );
@@ -63,13 +70,21 @@ export class StripePaymentService {
       const data = await response.json();
       console.log("✅ Stripe payment link created:", data);
 
+      // Handle both invoice and payment link responses
+      const paymentLink = data.invoice?.hosted_invoice_url || data.payment_link;
+      const invoiceId = data.invoice?.id || data.id;
+
+      if (!paymentLink) {
+        throw new Error("No payment link URL received from backend");
+      }
+
       return {
-        id: data.invoice.id,
-        hosted_invoice_url: data.invoice.hosted_invoice_url,
-        invoice_pdf: data.invoice.invoice_pdf,
-        status: data.invoice.status,
-        amount_due: data.invoice.amount_due,
-        payment_link: data.invoice.hosted_invoice_url, // Use the hosted invoice URL as the payment link
+        id: invoiceId,
+        hosted_invoice_url: paymentLink,
+        invoice_pdf: data.invoice?.invoice_pdf,
+        status: data.invoice?.status || data.status || "open",
+        amount_due: data.invoice?.amount_due || data.amount,
+        payment_link: paymentLink,
       };
     } catch (error) {
       console.error("❌ Error creating Stripe payment link:", error);
@@ -145,7 +160,7 @@ export class StripePaymentService {
    */
   static generateSimplePaymentLink(
     amount: number,
-    currency: string = "JMD",
+    currency: string = "USD",
     userId?: string
   ): string {
     const baseUrl = "https://handypay.com/pay";

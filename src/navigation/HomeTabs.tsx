@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Svg, { Path } from 'react-native-svg';
 import HomeScreen from '../screens/home/HomeScreen';
-import WalletScreen from '../screens/wallet/WalletScreen';
+import PayoutsScreen from '../screens/payouts/PayoutsScreen';
 import ActivityScreen from '../screens/activity/ActivityScreen';
 import { BiometricAuthService } from '../services';
 import { useUser } from '../contexts/UserContext';
@@ -176,7 +176,7 @@ export default function HomeTabs(): React.ReactElement {
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Activity" component={ActivityScreen} />
-      <Tab.Screen name="Payouts" component={WalletScreen} />
+      <Tab.Screen name="Payouts" component={PayoutsScreen} />
     </Tab.Navigator>
   );
 }

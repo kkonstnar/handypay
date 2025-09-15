@@ -11,41 +11,35 @@ import { SupabaseUserService } from '../../services/SupabaseService';
 
 export type SuccessPageProps = NativeStackScreenProps<RootStackParamList, 'SuccessPage'>;
 
-export default function SuccessPage({ navigation }: SuccessPageProps): React.ReactElement {
+interface AccountStatus {
+  id: string;
+  charges_enabled: boolean;
+  payouts_enabled: boolean;
+  details_submitted: boolean;
+  requirements?: any;
+}
+
+export default function SuccessPage({ navigation, route }: SuccessPageProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const { user, setUser } = useUser();
-  const [isCheckingStatus, setIsCheckingStatus] = useState(true);
-  const [accountStatus, setAccountStatus] = useState<{
-    id: string;
-    charges_enabled: boolean;
-    payouts_enabled: boolean;
-    details_submitted: boolean;
-    requirements?: any;
-  } | null>(null);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false); // Start as false since we have the data
+  const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null);
 
   useEffect(() => {
-    // Check status immediately without delay to avoid duplicate calls
-    checkStripeAccountStatus();
+    // Check if account status was passed from GetStartedPage
+    const passedAccountStatus = (route.params as any)?.accountStatus as AccountStatus;
 
-    // Reduced safety timeout: Only wait 2 seconds for faster UX
-    const safetyTimeout = setTimeout(() => {
-      if (isCheckingStatus) {
-        console.log('⏰ Safety timeout reached - showing success state');
-        setIsCheckingStatus(false);
-        // Set a fallback success state
-        setAccountStatus({
-          id: 'pending_verification',
-          charges_enabled: true,
-          payouts_enabled: true,
-          details_submitted: true,
-        });
-      }
-    }, 2000); // 2 seconds total
-
-    return () => {
-      clearTimeout(safetyTimeout);
-    };
-  }, []);
+    if (passedAccountStatus) {
+      console.log('📊 Using passed account status from GetStartedPage:', passedAccountStatus);
+      setAccountStatus(passedAccountStatus);
+      setIsCheckingStatus(false);
+    } else {
+      // Fallback: Check status if not passed (shouldn't happen in normal flow)
+      console.log('⚠️ No account status passed, falling back to API check');
+      setIsCheckingStatus(true);
+      checkStripeAccountStatus();
+    }
+  }, [route.params]);
 
   const checkStripeAccountStatus = async () => {
     if (!user?.id) {

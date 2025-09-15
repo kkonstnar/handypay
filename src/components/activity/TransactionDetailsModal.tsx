@@ -47,19 +47,73 @@ export default function TransactionDetailsModal({
     }
   };
 
-  const handleDownloadReceipt = (transaction: Transaction) => {
+  const handleDownloadReceipt = async (transaction: Transaction) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert(
-      'Download Receipt',
-      `Download receipt for ${transaction.description}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Download', 
-          onPress: () => Alert.alert('Success', 'Receipt downloaded to your Files app')
-        }
-      ]
-    );
+    
+    try {
+      const receiptContent = generateReceiptText(transaction);
+      
+      const { Share } = await import('react-native');
+      
+      await Share.share({
+        message: receiptContent,
+        title: 'Transaction Receipt',
+      });
+    } catch (error) {
+      console.error('Error downloading receipt:', error);
+      Alert.alert('Error', 'Failed to download receipt. Please try again.');
+    }
+  };
+
+  const generateReceiptText = (transaction: Transaction) => {
+    const formattedAmount = (transaction.amount / 100).toLocaleString('en-US', { 
+      minimumFractionDigits: 2, 
+      maximumFractionDigits: 2 
+    });
+    
+    const formattedDate = transaction.date ? 
+      new Date(transaction.date).toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short', 
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      }) : 'N/A';
+
+    const statusColor = transaction.status === 'completed' ? '#3AB75C' : 
+                       transaction.status === 'failed' ? '#EF4444' : '#F59E0B';
+
+    const paymentMethodDisplay = transaction.stripePaymentMethodType ? 
+      `${transaction.stripePaymentMethodType === 'card' ? 'Credit/Debit Card' : 
+         transaction.stripePaymentMethodType === 'paypal' ? 'PayPal' :
+         transaction.stripePaymentMethodType === 'cashapp' ? 'Cash App Pay' :
+         transaction.stripePaymentMethodType === 'us_bank_account' ? 'Bank Account' :
+         transaction.stripePaymentMethodType === 'link' ? 'Link by Stripe' :
+         transaction.stripePaymentMethodType}${transaction.cardLast4 ? ` •••• ${transaction.cardLast4}` : ''}` :
+      transaction.paymentMethod === 'qr_code' ? 'QR Code Payment' :
+      transaction.paymentMethod === 'payment_link' ? 'Payment Link' : 'Payment Received';
+
+    return `📧 HANDYPAY RECEIPT 📧
+
+$${formattedAmount} ${transaction.currency || 'USD'}
+${transaction.type === 'received' ? 'Payment Received' : 
+  transaction.type === 'payment_link' ? 'Payment Link' :
+  transaction.type === 'qr_payment' ? 'QR Payment' : 'Transaction'}
+${formattedDate}
+
+Transaction Details:
+• Status: ${transaction.status.toUpperCase()}
+• Payment Method: ${paymentMethodDisplay}${transaction.customerName ? `
+• From: ${transaction.customerName}` : ''}${transaction.customerEmail ? `
+• Email: ${transaction.customerEmail}` : ''}
+• Description: ${transaction.description}
+• Transaction ID: ${transaction.id}${transaction.completedAt ? `
+• Completed: ${new Date(transaction.completedAt).toLocaleString()}` : ''}
+
+---
+HandyPay - Making payments simple
+Generated on ${new Date().toLocaleString()}`;
   };
 
   const handleReportIssue = (transaction: Transaction) => {
@@ -152,7 +206,7 @@ export default function TransactionDetailsModal({
               styles.amount,
               { color: '#111827' }
             ]}>
-              ${transaction.amount.toFixed(2)}
+              ${transaction.amount.toFixed(2)} {transaction.currency || 'JMD'}
             </Text>
             <Text style={styles.description}>{transaction.description}</Text>
             {transaction.merchant && (
@@ -214,20 +268,125 @@ export default function TransactionDetailsModal({
                 })}
               </Text>
             </View>
-            
+
+            {transaction.createdAt && transaction.createdAt instanceof Date && (
+              <View style={styles.row}>
+                <Text style={styles.label}>Created</Text>
+                <Text style={styles.value}>
+                  {transaction.createdAt.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric'
+                  })} at {transaction.createdAt.toLocaleTimeString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                  })}
+                </Text>
+              </View>
+            )}
+
+            {transaction.status === 'completed' && transaction.completedAt && transaction.completedAt instanceof Date && (
+              <View style={styles.row}>
+                <Text style={styles.label}>Paid</Text>
+                <Text style={[styles.value, styles.successText]}>
+                  {transaction.completedAt.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric'
+                  })} at {transaction.completedAt.toLocaleTimeString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                  })}
+                </Text>
+              </View>
+            )}
+
+            {transaction.status === 'failed' && transaction.failedAt && transaction.failedAt instanceof Date && (
+              <View style={styles.row}>
+                <Text style={styles.label}>Failed</Text>
+                <Text style={[styles.value, styles.errorText]}>
+                  {transaction.failedAt.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric'
+                  })} at {transaction.failedAt.toLocaleTimeString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                  })}
+                </Text>
+              </View>
+            )}
+
+            {transaction.status === 'failed' && transaction.failureReason && (
+              <View style={styles.row}>
+                <Text style={styles.label}>Failure Reason</Text>
+                <Text style={[styles.value, styles.errorText]}>
+                  {transaction.failureReason}
+                </Text>
+              </View>
+            )}
+
             <View style={styles.row}>
               <Text style={styles.label}>Payment Method</Text>
-              <Text style={styles.value}>
-                {transaction.paymentMethod === 'qr_code' ? 'QR Code Payment' :
-                 transaction.paymentMethod === 'payment_link' ? 'Payment Link' :
-                 'Payment Received'}
-              </Text>
+              <View style={styles.paymentMethodContainer}>
+                <Text style={styles.value}>
+                  {transaction.paymentMethod === 'qr_code' ? 'QR Code Payment' :
+                   transaction.paymentMethod === 'payment_link' ? 'Payment Link' :
+                   'Payment Received'}
+                </Text>
+                {transaction.stripePaymentMethodType && (
+                  <View style={styles.paymentTypeContainer}>
+                    <Ionicons 
+                      name={
+                        transaction.stripePaymentMethodType === 'card' ? 'card' :
+                        transaction.stripePaymentMethodType === 'paypal' ? 'logo-paypal' :
+                        transaction.stripePaymentMethodType === 'cashapp' ? 'phone-portrait' :
+                        transaction.stripePaymentMethodType === 'us_bank_account' ? 'business' :
+                        transaction.stripePaymentMethodType === 'link' ? 'link' :
+                        transaction.stripePaymentMethodType === 'apple_pay' ? 'logo-apple' :
+                        transaction.stripePaymentMethodType === 'google_pay' ? 'logo-google' :
+                        'card'
+                      }
+                      size={16} 
+                      color={
+                        transaction.stripePaymentMethodType === 'card' ? '#3AB75C' :
+                        transaction.stripePaymentMethodType === 'paypal' ? '#0070ba' :
+                        transaction.stripePaymentMethodType === 'cashapp' ? '#00d632' :
+                        transaction.stripePaymentMethodType === 'us_bank_account' ? '#1f2937' :
+                        transaction.stripePaymentMethodType === 'link' ? '#635bff' :
+                        transaction.stripePaymentMethodType === 'apple_pay' ? '#000000' :
+                        transaction.stripePaymentMethodType === 'google_pay' ? '#4285f4' :
+                        '#6b7280'
+                      }
+                    />
+                    <Text style={styles.paymentTypeText}>
+                      {transaction.stripePaymentMethodType === 'card' ? 'Credit/Debit Card' :
+                       transaction.stripePaymentMethodType === 'paypal' ? 'PayPal' :
+                       transaction.stripePaymentMethodType === 'cashapp' ? 'Cash App Pay' :
+                       transaction.stripePaymentMethodType === 'us_bank_account' ? 'Bank Account' :
+                       transaction.stripePaymentMethodType === 'link' ? 'Link by Stripe' :
+                       transaction.stripePaymentMethodType === 'apple_pay' ? 'Apple Pay' :
+                       transaction.stripePaymentMethodType === 'google_pay' ? 'Google Pay' :
+                       transaction.stripePaymentMethodType}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
+
+            {transaction.currency && (
+              <View style={styles.row}>
+                <Text style={styles.label}>Currency</Text>
+                <Text style={styles.value}>{transaction.currency.toUpperCase()}</Text>
+              </View>
+            )}
             
             
             <View style={styles.row}>
               <Text style={styles.label}>Transaction ID</Text>
-              <Text style={styles.valueMono}>{transaction.id}A2C4-{transaction.date.getTime()}</Text>
+              <Text style={styles.valueMono}>
+                {transaction.id}A2C4-{transaction.date && !isNaN(transaction.date.getTime()) ? transaction.date.getTime() : 'invalid'}
+              </Text>
             </View>
           </View>
           
@@ -394,6 +553,32 @@ const styles = StyleSheet.create({
     backgroundColor: '#fef2f2'
   },
   cancelText: {
+    color: '#dc2626'
+  },
+  paymentMethodContainer: {
+    flex: 1,
+    alignItems: 'flex-end'
+  },
+  paymentTypeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 6
+  },
+  paymentTypeText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#6b7280',
+    fontFamily: 'DMSans-Medium'
+  },
+  successText: {
+    color: '#3AB75C'
+  },
+  errorText: {
     color: '#dc2626'
   }
 });

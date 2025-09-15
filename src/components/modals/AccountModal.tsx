@@ -106,6 +106,7 @@ export default function AccountModal({
     );
   };
 
+
   const handleLegal = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onClose();
@@ -367,7 +368,7 @@ export default function AccountModal({
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.accountItem, styles.lastAccountItem]}
+                  style={styles.accountItem}
                   activeOpacity={0.7}
                   onPress={handleReportBug}
                 >
@@ -381,6 +382,7 @@ export default function AccountModal({
                   </View>
                   <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
                 </TouchableOpacity>
+
               </View>
             </View>
 

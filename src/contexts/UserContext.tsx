@@ -240,6 +240,35 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initializeUser();
   }, []);
 
+  // Auto-register push tokens for all users (regardless of notification preferences)
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const registerPushToken = async () => {
+      try {
+        console.log('🔔 Auto-registering push token for user:', user.id);
+        
+        const { NotificationService } = await import('../services/notificationService');
+        
+        // Get push token (this works even if notifications are disabled)
+        const pushToken = await NotificationService.getPushToken();
+        
+        if (pushToken) {
+          console.log('📱 Push token obtained, syncing to backend');
+          await NotificationService.syncTokenToBackend(pushToken);
+          console.log('✅ Push token auto-registered for user:', user.id);
+        } else {
+          console.log('⚠️ No push token available for auto-registration');
+        }
+      } catch (error) {
+        console.error('❌ Error auto-registering push token:', error);
+        // Don't throw - this shouldn't break the app
+      }
+    };
+
+    registerPushToken();
+  }, [user?.id]);
+
   // Ban status monitoring via push notifications - no more polling!
   useEffect(() => {
     if (!user?.id) return;

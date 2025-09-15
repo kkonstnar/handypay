@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, SectionList } from 'react-native';
+import { View, Text, StyleSheet, SectionList, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import TransactionItem from './TransactionItem';
 import { Transaction } from '../../contexts/TransactionContext';
@@ -14,6 +14,8 @@ interface TransactionListProps {
   onTransactionPress: (transaction: Transaction) => void;
   isLoading?: boolean;
   isFirstVisit?: boolean;
+  refreshing?: boolean;
+  onRefresh?: () => void;
 }
 
 const SkeletonTransaction = () => (
@@ -69,7 +71,9 @@ export default function TransactionList({
   sections,
   onTransactionPress,
   isLoading = false,
-  isFirstVisit = true
+  isFirstVisit = true,
+  refreshing = false,
+  onRefresh
 }: TransactionListProps): React.ReactElement {
   
   const renderTransaction = ({ item: transaction }: { item: Transaction }) => (
@@ -99,6 +103,16 @@ export default function TransactionList({
       contentContainerStyle={styles.transactionsContent}
       showsVerticalScrollIndicator={false}
       stickySectionHeadersEnabled={false}
+      refreshControl={
+        onRefresh ? (
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#3AB75C"
+            colors={["#3AB75C"]}
+          />
+        ) : undefined
+      }
     />
   );
 }

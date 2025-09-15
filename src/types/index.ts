@@ -7,7 +7,8 @@ export interface Transaction {
     | "withdrawal"
     | "card_payment"
     | "refund"
-    | "qr_payment";
+    | "qr_payment"
+    | "payment_link";
   amount: number;
   description: string;
   merchant?: string;
@@ -16,6 +17,23 @@ export interface Transaction {
   cardLast4?: string;
   qrCode?: string;
   expiresAt?: Date;
+  paymentMethod?: "qr_code" | "payment_link";
+  stripePaymentLinkId?: string;
+  createdAt?: Date;
+  completedAt?: Date;
+  failedAt?: Date; // When transaction failed
+  stripePaymentMethodType?:
+    | "card"
+    | "paypal"
+    | "cashapp"
+    | "us_bank_account"
+    | "link"
+    | "apple_pay"
+    | "google_pay";
+  failureReason?: string; // Reason for failure
+  currency?: string; // Currency used
+  customerName?: string; // Customer name for received payments
+  customerEmail?: string; // Customer email for received payments
 }
 
 // API Response wrapper

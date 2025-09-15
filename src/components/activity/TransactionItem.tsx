@@ -21,7 +21,7 @@ export default function TransactionItem({ transaction, onPress }: TransactionIte
   // Text style for cancelled transactions
   const textStyle = isCancelled ? { textDecorationLine: 'line-through' as const } : {};
   
-  // QR Code Icon (Home Tab Icon)
+  // QR Code Icon (Home Tab Icon) - Used for direct QR payments only
   const QRCodeIcon = () => (
     <Svg width={21} height={18} viewBox="0 0 21 18" fill="none">
       <Path d="M18.9965 12.2725C18.5884 12.2725 18.1802 12.5793 18.1802 13.0907V15.1361C18.1802 15.852 17.5679 16.3634 16.9557 16.3634H14.9149C14.5067 16.3634 14.0986 16.6702 14.0986 17.1816C14.0986 17.6929 14.4047 17.9998 14.9149 17.9998H16.9557C18.4863 17.9998 19.8128 16.7725 19.8128 15.1361V13.0907C19.8128 12.6816 19.4047 12.2725 18.9965 12.2725Z" fill="#3AB75C"/>
@@ -33,7 +33,7 @@ export default function TransactionItem({ transaction, onPress }: TransactionIte
     </Svg>
   );
   
-  // Payment Link Icon
+  // Payment Link Icon - Used for payment links (standalone and QR-enabled)
   const PaymentLinkIcon = () => (
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
       <G clipPath="url(#clip0_498_12900)">
@@ -51,10 +51,11 @@ export default function TransactionItem({ transaction, onPress }: TransactionIte
   
   // Determine icon based on payment method
   const getPaymentIcon = () => {
-    // Use home icon for QR code payments and QR-generated payment links
+    // Use home icon only for direct QR code payments
     if (transaction.type === 'qr_payment' || transaction.paymentMethod === 'qr_code') {
       return <QRCodeIcon />;
     } else {
+      // Use payment link icon for payment links (whether standalone or used for QR)
       return <PaymentLinkIcon />;
     }
   };
@@ -92,7 +93,7 @@ export default function TransactionItem({ transaction, onPress }: TransactionIte
           { color: amountColor },
           textStyle
         ]}>
-          ${transaction.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+          ${transaction.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} {transaction.currency || 'JMD'}
         </Text>
         <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
       </View>

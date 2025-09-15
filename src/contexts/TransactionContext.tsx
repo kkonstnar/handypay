@@ -8,13 +8,21 @@ export interface Transaction {
   amount: number;
   description: string;
   merchant?: string;
-  date: Date;
+  date: Date; // Created date
   status: 'completed' | 'pending' | 'failed' | 'cancelled';
   cardLast4?: string;
   qrCode?: string;
   expiresAt?: Date;
   paymentMethod?: 'qr_code' | 'payment_link';
   stripePaymentLinkId?: string; // For Stripe payment link transactions
+  createdAt?: Date; // When transaction was created
+  completedAt?: Date; // When transaction was completed (paid)
+  failedAt?: Date; // When transaction failed
+  stripePaymentMethodType?: 'card' | 'paypal' | 'cashapp' | 'us_bank_account' | 'link' | 'apple_pay' | 'google_pay'; // Specific Stripe payment method used
+  failureReason?: string; // Reason for failure if status is 'failed'
+  currency?: string; // Currency used (USD, JMD, etc.)
+  customerName?: string; // Customer name for received payments
+  customerEmail?: string; // Customer email for received payments
 }
 
 interface TransactionContextType {

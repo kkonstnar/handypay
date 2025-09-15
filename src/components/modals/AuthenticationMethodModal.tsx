@@ -376,8 +376,53 @@ export default function AuthenticationMethodModal({
   };
 
   const handleDeleteAccount = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    
+    // First confirmation alert
+    Alert.alert(
+      'Delete Account\n',
+      'Are you sure you want to permanently delete your account?\nThis action cannot be undone and will:\n\n• Delete all your transaction history and all personal data\n• You will also lose access to all funds and data.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+          onPress: () => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }
+        },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: () => {
+            // Second confirmation alert
+            Alert.alert(
+              '⚠️ Final Confirmation',
+              'This is your last chance to cancel.\n\nOnce you confirm, your account will be permanently deleted and cannot be recovered.',
+              [
+                {
+                  text: 'Cancel',
+                  style: 'cancel',
+                  onPress: () => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }
+                },
+                {
+                  text: 'Yes, Delete Forever',
+                  style: 'destructive',
+                  onPress: () => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                    proceedWithDeletion();
+                  }
+                }
+              ]
+            );
+          }
+        }
+      ]
+    );
+  };
 
+  const proceedWithDeletion = async () => {
     // Function to perform actual account deletion after authentication
     const performDelete = async () => {
       console.log('🗑️ Performing account deletion...');

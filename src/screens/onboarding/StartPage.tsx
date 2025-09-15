@@ -112,6 +112,50 @@ const getNavigationDestination = async (userData: any): Promise<string> => {
   }
 };
 
+// Helper function to reset authentication state
+const resetAuthState = (setLoading: (value: boolean) => void, setProvider: (value: string | null) => void) => {
+  setLoading(false);
+  setProvider(null);
+};
+
+// Helper function to handle successful authentication
+const handleAuthSuccess = async (
+  userData: any,
+  setUser: any,
+  updateLastLogin: any,
+  handlePostAuthNavigation: any,
+  successMessage: string = 'Successfully signed in!'
+) => {
+  console.log('👤 Storing user data locally:', userData.id);
+
+  await setUser(userData);
+  await updateLastLogin();
+
+  Toast.show({
+    type: 'success',
+    text1: successMessage,
+  });
+
+  // Handle navigation directly instead of letting RootNavigator do it
+  await handlePostAuthNavigation(userData);
+};
+
+// Helper function to handle authentication errors
+const handleAuthError = (error: any, providerName: string) => {
+  console.error(`❌ ${providerName} authentication error:`, error);
+  Alert.alert('Error', error?.message || `${providerName} authentication failed`);
+};
+
+// Helper function to handle authentication cancellation
+const handleAuthCancellation = (providerName: string) => {
+  console.log(`🚫 ${providerName} authentication cancelled by user`);
+  Toast.show({
+    type: 'info',
+    text1: 'Login cancelled',
+    text2: 'You can try again anytime'
+  });
+};
+
 
 export type StartPageProps = NativeStackScreenProps<RootStackParamList, 'StartPage'>;
 
@@ -232,8 +276,7 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
 
           if (error) {
             Alert.alert('Authentication Error', `Google OAuth failed: ${error}`);
-            setLoading(false);
-            setProvider(null);
+            resetAuthState(setLoading, setProvider);
             return;
           }
 
@@ -272,8 +315,7 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
             } catch (parseError) {
               console.error('❌ Error parsing user data from URL:', parseError);
               Alert.alert('Authentication Error', 'Failed to process user data');
-              setLoading(false);
-              setProvider(null);
+              resetAuthState(setLoading, setProvider);
               return;
             }
           }
@@ -304,28 +346,16 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
 
             console.log('👤 Creating Google user data from legacy deep link:', userData.id);
 
-            await setUser(userData);
-            await updateLastLogin();
+            await handleAuthSuccess(userData, setUser, updateLastLogin, handlePostAuthNavigation, 'Successfully signed in with Google!');
 
-            Toast.show({
-              type: 'success',
-              text1: 'Successfully signed in with Google!',
-            });
-
-            setLoading(false);
-            setProvider(null);
-
-            // Handle navigation directly instead of letting RootNavigator do it
-            await handlePostAuthNavigation(userData);
+            resetAuthState(setLoading, setProvider);
           } else {
             Alert.alert('Authentication Error', 'No authorization code or user data received from Google');
-            setLoading(false);
-            setProvider(null);
+            resetAuthState(setLoading, setProvider);
           }
         } catch (error) {
           Alert.alert('Authentication Error', `Failed to complete Google authentication: ${error instanceof Error ? error.message : 'Unknown error'}`);
-          setLoading(false);
-          setProvider(null);
+          resetAuthState(setLoading, setProvider);
         }
       }
     };
@@ -353,8 +383,7 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
   useEffect(() => {
     return () => {
       // Reset loading state when component unmounts
-      setLoading(false);
-      setProvider(null);
+      resetAuthState(setLoading, setProvider);
     };
   }, []);
 
@@ -363,8 +392,7 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
     const unsubscribe = navigation.addListener('focus', () => {
       if (loading || provider) {
         console.log('🔄 Resetting auth state due to screen focus');
-        setLoading(false);
-        setProvider(null);
+        resetAuthState(setLoading, setProvider);
 
         // Show cancellation toast
         Toast.show({
@@ -390,53 +418,29 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
       const result = await applePromptAsync();
 
       if (result.type === 'success') {
-        const appleParams = result.params;
         const userData = (result as any).userData;
 
         console.log('🍎 Apple auth successful, user data:', userData?.id);
 
         if (userData) {
-          console.log('👤 Storing Apple user data locally:', userData.id);
-
-          await setUser(userData);
-          await updateLastLogin();
-
-          Toast.show({
-            type: 'success',
-            text1: 'Successfully signed in!',
-          });
-
-          // Handle navigation directly instead of letting RootNavigator do it
-          await handlePostAuthNavigation(userData);
+          await handleAuthSuccess(userData, setUser, updateLastLogin, handlePostAuthNavigation, 'Successfully signed in!');
         } else {
           console.error('❌ No user data received from Apple authentication');
           Alert.alert('Error', 'Authentication failed - no user data created');
+          resetAuthState(setLoading, setProvider);
+          return;
         }
       } else if (result.type === 'error') {
-        console.error('❌ Apple authentication error:', result.error);
-        Alert.alert('Error', result.error?.message || 'Apple authentication failed');
-      } else if (result.type === 'cancel') {
-        console.log('🚫 Apple authentication cancelled by user');
-        Toast.show({
-          type: 'info',
-          text1: 'Login cancelled',
-          text2: 'You can try again anytime'
-        });
+        handleAuthError(result.error, 'Apple');
       } else {
-        console.log('🚫 Apple authentication dismissed/cancelled');
-        Toast.show({
-          type: 'info',
-          text1: 'Login cancelled',
-          text2: 'You can try again anytime'
-        });
+        handleAuthCancellation('Apple');
       }
     } catch (error) {
       console.error('❌ Apple authentication error:', error);
       Alert.alert('Error', 'Failed to start Apple authentication');
-    } finally {
-      setLoading(false);
-      setProvider(null);
     }
+
+    resetAuthState(setLoading, setProvider);
   };
 
   const handleGooglePress = async () => {
@@ -451,18 +455,7 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
         console.log('👤 Google user data:', result.userData);
 
         if (result.userData) {
-          console.log('👤 Storing Google user data locally:', result.userData.id);
-
-          await setUser(result.userData);
-          await updateLastLogin();
-
-          Toast.show({
-            type: 'success',
-            text1: 'Successfully signed in with Google!',
-          });
-
-          // Handle navigation directly instead of letting RootNavigator do it
-          await handlePostAuthNavigation(result.userData);
+          await handleAuthSuccess(result.userData, setUser, updateLastLogin, handlePostAuthNavigation, 'Successfully signed in with Google!');
         } else {
           console.error('❌ No user data received from Google authentication');
 
@@ -477,30 +470,16 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
           });
         }
       } else if (result.type === 'error') {
-        console.error('❌ Google authentication error:', result.error);
-        Alert.alert('Error', result.error?.message || 'Google authentication failed');
-      } else if (result.type === 'cancel') {
-        console.log('🚫 Google authentication cancelled by user');
-        Toast.show({
-          type: 'info',
-          text1: 'Login cancelled',
-          text2: 'You can try again anytime'
-        });
+        handleAuthError(result.error, 'Google');
       } else {
-        console.log('🚫 Google authentication dismissed/cancelled');
-        Toast.show({
-          type: 'info',
-          text1: 'Login cancelled',
-          text2: 'You can try again anytime'
-        });
+        handleAuthCancellation('Google');
       }
     } catch (error) {
       console.error('❌ Google authentication error:', error);
       Alert.alert('Error', 'Failed to start Google authentication');
-    } finally {
-      setLoading(false);
-      setProvider(null);
     }
+
+    resetAuthState(setLoading, setProvider);
   };
 
   const handleEmailLoginPress = () => {
@@ -542,9 +521,9 @@ export default function StartPage({ navigation }: StartPageProps): React.ReactEl
       </View>
 
       <View style={styles.content}>
-        <Text style={styles.mainHeading}>Start accepting payments with your phone</Text>
+        <Text style={styles.mainHeading}>Start accepting card payments with your phone</Text>
         <Text style={styles.subText}>
-          Create payment links and QR codes instantly to accept JMD or USD in just a few simple steps.
+        Accept cards, CashApp, PayPal, US bank transfers, paid out directly to your Jamaican bank, with links or QR codes.
         </Text>
 
         <View style={styles.buttonContainer}>

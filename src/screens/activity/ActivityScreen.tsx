@@ -2,9 +2,9 @@ import React, { useState, useEffect, memo, useCallback, useMemo } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Toast from 'react-native-toast-message';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/RootNavigator';
 import { Ionicons } from '@expo/vector-icons';
@@ -72,7 +72,7 @@ function ActivityScreen(): React.ReactElement {
   const [showLanguageModal, setShowLanguageModal] = useState(false);
   const [showLegalModal, setShowLegalModal] = useState(false);
   const [showAuthenticationMethodModal, setShowAuthenticationMethodModal] = useState(false);
-  const [currentAuthMethod, setCurrentAuthMethod] = useState<'apple'>('apple');
+  const [currentAuthMethod, setCurrentAuthMethod] = useState<'apple' | 'google'>('apple');
   const [showSafetyPinModal, setShowSafetyPinModal] = useState(false);
 
   const { transactions, cancelTransaction } = useTransactions();
@@ -86,6 +86,7 @@ function ActivityScreen(): React.ReactElement {
   const [showSafetyPinVerifyModal, setShowSafetyPinVerifyModal] = useState(false);
   const [transactionUpdateKey, setTransactionUpdateKey] = useState(0);
   const [lastTransactionCount, setLastTransactionCount] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Monitor transaction changes and force re-render
   React.useEffect(() => {
@@ -128,10 +129,31 @@ function ActivityScreen(): React.ReactElement {
     }
   }, []);
 
+  // Refetch transactions when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      if (userData?.id) {
+        console.log('🔄 Activity screen focused, refetching transactions...');
+        refetchTransactions();
+      }
+    }, [userData?.id, refetchTransactions])
+  );
+
   const handleAvatarPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setShowAccountModal(true);
   }, []);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refetchTransactions();
+    } catch (error) {
+      console.error('Error refreshing transactions:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetchTransactions]);
 
   const closeAccountModal = () => {
     setShowAccountModal(false);
@@ -242,6 +264,7 @@ function ActivityScreen(): React.ReactElement {
     return unsubscribe;
   }, [navigation, refetchTransactions, isFirstVisit]);
 
+
   // Combine context data and API transactions (no mock data)
   const allTransactions = React.useMemo(() => {
     // Handle API response structure - it could be an array or an object with transactions property
@@ -254,12 +277,22 @@ function ActivityScreen(): React.ReactElement {
       }
     }
 
-    const processedApiTxns = apiTxns.map((tx: Transaction, index: number) => ({
-      ...tx,
-      originalId: tx.id, // Store original ID for cancellation
-      id: `api_${tx.id}_${index}`, // Ensure unique IDs for UI
-      date: new Date(tx.date) // Convert string date to Date object
-    }));
+    const processedApiTxns = apiTxns.map((tx: Transaction, index: number) => {
+      let dateObj = new Date(); // Default to current date
+      if (tx.date) {
+        const parsedDate = new Date(tx.date);
+        if (!isNaN(parsedDate.getTime())) {
+          dateObj = parsedDate;
+        }
+      }
+
+      return {
+        ...tx,
+        originalId: tx.id, // Store original ID for cancellation
+        id: `api_${tx.id}_${index}`, // Ensure unique IDs for UI
+        date: dateObj // Convert string date to Date object
+      };
+    });
 
     const contextTxns = transactions.map((tx: Transaction, index: number) => ({
       ...tx,
@@ -281,10 +314,43 @@ function ActivityScreen(): React.ReactElement {
     return combined;
   }, [transactions, apiTransactions, transactionUpdateKey]);
 
+  // Auto-refresh transactions every 10 minutes for pending transactions only (reduced frequency)
+  useEffect(() => {
+    // Only auto-refresh if there are actually pending transactions
+    const hasPendingTransactions = allTransactions.some(tx => tx.status === 'pending');
+    
+    if (!hasPendingTransactions || !userData?.id || isFirstVisit) {
+      return; // Don't set up polling if no pending transactions
+    }
+
+    console.log('🔄 Setting up auto-refresh for pending transactions...');
+    const pollInterval = setInterval(() => {
+      // Double-check that we still have pending transactions before refreshing
+      const stillHasPending = allTransactions.some(tx => tx.status === 'pending');
+      if (stillHasPending && userData?.id && !isFirstVisit) {
+        console.log('🔄 Auto-refreshing transactions (pending transactions detected)...');
+        refetchTransactions();
+      }
+    }, 600000); // Increased to 10 minutes to reduce server load
+
+    return () => {
+      console.log('🔄 Clearing auto-refresh interval');
+      clearInterval(pollInterval);
+    };
+  }, [userData?.id, refetchTransactions, isFirstVisit, allTransactions.length]); // Use length instead of full array
+
   // Show error message if API call fails
   React.useEffect(() => {
     if (apiError && !isLoading) {
-      Alert.alert('Connection Error', 'Unable to fetch latest transactions. Showing cached data.');
+      const isTimeoutError = apiError.includes('timeout') || apiError.includes('408');
+      
+      if (isTimeoutError) {
+        console.log('⚠️ Timeout error detected, showing user-friendly message');
+        // Don't show alert for timeout errors - they're handled gracefully
+        // Just log and continue showing cached data
+      } else {
+        Alert.alert('Connection Error', 'Unable to fetch latest transactions. Showing cached data.');
+      }
     }
   }, [apiError, isLoading]);
   
@@ -343,6 +409,8 @@ function ActivityScreen(): React.ReactElement {
         onTransactionPress={handleTransactionPress}
         isLoading={isLoading}
         isFirstVisit={isFirstVisit}
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
       />
       
       
@@ -400,7 +468,10 @@ function ActivityScreen(): React.ReactElement {
         onClose={closeAccountModal}
         userName={getUserDisplayName(user)}
         userInitials={getUserInitials(user)}
-        memberSince={userData?.memberSince ? new Date(userData.memberSince).toLocaleDateString() : undefined}
+        memberSince={userData?.memberSince ? (() => {
+          const date = new Date(userData.memberSince);
+          return !isNaN(date.getTime()) ? date.toLocaleDateString() : undefined;
+        })() : undefined}
         currentAuthMethod={userData?.authProvider || 'apple'}
         onShowReportBug={() => setShowReportBugModal(true)}
         onShowLanguage={() => setShowLanguageModal(true)}

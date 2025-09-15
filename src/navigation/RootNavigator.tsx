@@ -30,7 +30,15 @@ export type RootStackParamList = {
   LegalPage: undefined;
   TermsContentPage: undefined;
   GetStartedPage: undefined;
-  SuccessPage: undefined;
+  SuccessPage: {
+    accountStatus?: {
+      id: string;
+      charges_enabled: boolean;
+      payouts_enabled: boolean;
+      details_submitted: boolean;
+      requirements?: any;
+    };
+  };
   PaymentApproved: { amount?: number; currency?: string };
   PaymentError: { amount?: number; currency?: string };
   ShareReceipt: { amount?: number; currency?: string };
@@ -41,6 +49,56 @@ export type RootStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+// Component to handle navigation reset after routing decision
+function NavigationWrapper({
+  initialRoute,
+  routingDecisionMade,
+  isLoading
+}: {
+  initialRoute: keyof RootStackParamList;
+  routingDecisionMade: boolean;
+  isLoading: boolean;
+}): React.ReactElement {
+  // Show loading screen while determining initial route
+  if (isLoading || !routingDecisionMade) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#ffffff' }}>
+        <ActivityIndicator size="large" color="#3AB75C" />
+      </View>
+    );
+  }
+
+  // Render the navigator with the correct initial route
+  return (
+    <Stack.Navigator
+      initialRouteName={initialRoute}
+      screenOptions={{ headerShown: false }}
+    >
+      <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+      <Stack.Screen name="StartPage" component={StartPage} />
+      <Stack.Screen name="BiometricsPage" component={BiometricsPage} />
+      <Stack.Screen name="NotificationsPage" component={NotificationsPage} />
+      <Stack.Screen name="PrivacyPage" component={PrivacyPage} />
+      <Stack.Screen name="FeaturesPage" component={FeaturesPage} />
+      <Stack.Screen name="LegalPage" component={LegalPage} />
+      <Stack.Screen name="TermsContentPage" component={TermsContentPage} />
+      <Stack.Screen name="GetStartedPage" component={GetStartedPage} />
+      <Stack.Screen
+        name="SuccessPage"
+        component={SuccessPage}
+        options={{ gestureEnabled: false }}
+      />
+      <Stack.Screen name="PaymentApproved" component={PaymentApproved} />
+      <Stack.Screen name="PaymentError" component={PaymentError} />
+      <Stack.Screen name="ShareReceipt" component={ShareReceipt} />
+      <Stack.Screen name="ScanToPay" component={ScanToPayScreen} />
+
+      <Stack.Screen name="TransactionDetails" component={TransactionDetailsScreen} />
+      <Stack.Screen name="HomeTabs" component={HomeTabs} />
+    </Stack.Navigator>
+  );
+}
 
 // Component to handle initial routing based on authentication status
 function AuthRouter(): React.ReactElement {
@@ -53,6 +111,7 @@ function AuthRouter(): React.ReactElement {
   const [lastCheckedUserId, setLastCheckedUserId] = useState<string | null>(null);
   const [lastCheckedTime, setLastCheckedTime] = useState<number | null>(null);
   const [initialRoute, setInitialRoute] = useState<keyof RootStackParamList>("StartPage");
+  const [routingDecisionMade, setRoutingDecisionMade] = useState(false);
 
   // Check backend onboarding status when user is available
   useEffect(() => {
@@ -168,25 +227,26 @@ function AuthRouter(): React.ReactElement {
       if (onboardingCompleted && hasStripeAccount) {
         // User has completed onboarding, go to main app
         if (__DEV__) {
-          console.log('🚀 User has completed onboarding - setting initial route to HomeTabs');
+          console.log('🚀 User has completed onboarding - routing to HomeTabs');
         }
         routeName = "HomeTabs";
       } else if (hasStripeAccount) {
         // User has Stripe account but onboarding not complete, go to GetStartedPage
         if (__DEV__) {
-          console.log('🔄 User has Stripe account but onboarding incomplete - setting initial route to GetStartedPage');
+          console.log('🔄 User has Stripe account but onboarding incomplete - routing to GetStartedPage');
         }
         routeName = "GetStartedPage";
       } else {
         // User has no Stripe account, start from biometrics
         if (__DEV__) {
-          console.log('👤 User has no Stripe account - setting initial route to BiometricsPage');
+          console.log('👤 User has no Stripe account - routing to BiometricsPage');
         }
         routeName = "BiometricsPage";
       }
     }
 
     setInitialRoute(routeName);
+    setRoutingDecisionMade(true);
   };
 
   // Handle navigation for non-authenticated users
@@ -196,35 +256,8 @@ function AuthRouter(): React.ReactElement {
     }
   }, [isLoading, user, checkingOnboarding]);
 
-  // Remove white screen loading - let individual pages handle their own loading states
-
   return (
-    <Stack.Navigator
-      initialRouteName={initialRoute}
-      screenOptions={{ headerShown: false }}
-    >
-      <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-      <Stack.Screen name="StartPage" component={StartPage} />
-      <Stack.Screen name="BiometricsPage" component={BiometricsPage} />
-      <Stack.Screen name="NotificationsPage" component={NotificationsPage} />
-      <Stack.Screen name="PrivacyPage" component={PrivacyPage} />
-      <Stack.Screen name="FeaturesPage" component={FeaturesPage} />
-      <Stack.Screen name="LegalPage" component={LegalPage} />
-      <Stack.Screen name="TermsContentPage" component={TermsContentPage} />
-      <Stack.Screen name="GetStartedPage" component={GetStartedPage} />
-      <Stack.Screen
-        name="SuccessPage"
-        component={SuccessPage}
-        options={{ gestureEnabled: false }}
-      />
-      <Stack.Screen name="PaymentApproved" component={PaymentApproved} />
-      <Stack.Screen name="PaymentError" component={PaymentError} />
-      <Stack.Screen name="ShareReceipt" component={ShareReceipt} />
-      <Stack.Screen name="ScanToPay" component={ScanToPayScreen} />
-
-      <Stack.Screen name="TransactionDetails" component={TransactionDetailsScreen} />
-      <Stack.Screen name="HomeTabs" component={HomeTabs} />
-    </Stack.Navigator>
+    <NavigationWrapper initialRoute={initialRoute} routingDecisionMade={routingDecisionMade} isLoading={isLoading} />
   );
 }
 

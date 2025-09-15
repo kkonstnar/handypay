@@ -34,13 +34,66 @@ const fetchAccountStatus = async (accountId: string) => {
   return response.json();
 };
 
+// Helper function to show Stripe continuation confirmation
+const confirmStripeContinuation = async (): Promise<boolean> => {
+  return new Promise<boolean>((resolve) => {
+    Alert.alert(
+      'Continue to Stripe',
+      'You\'ll be redirected to Stripe to complete your merchant account setup. This will open in the app.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+          onPress: () => resolve(false)
+        },
+        {
+          text: 'Continue',
+          style: 'default',
+          onPress: () => resolve(true)
+        }
+      ]
+    );
+  });
+};
+
+// Helper function to handle WebBrowser result
+const handleBrowserResult = (result: any, setIsOnboardingInProgress: (value: boolean) => void, setLoading: (value: boolean) => void, setProcessingCompletion: (value: boolean) => void, setShowRowLoading: (value: boolean) => void, setShowArrowLoading: (value: boolean) => void, setHasIncompleteOnboarding: (value: boolean) => void) => {
+  console.log('🔗 Stripe onboarding browser result:', result);
+
+  if (result.type === 'cancel') {
+    console.log('🚫 User cancelled Stripe onboarding in browser');
+
+    // Use setTimeout to ensure state updates happen after current render cycle
+    setTimeout(() => {
+      setIsOnboardingInProgress(false);
+      setLoading(false);
+      setProcessingCompletion(false);
+      setShowRowLoading(false);
+      setShowArrowLoading(false);
+      setHasIncompleteOnboarding(true);
+    }, 0);
+
+    Toast.show({
+      type: 'cancel',
+      text1: 'Onboarding saved',
+      text2: 'You can continue anytime'
+    });
+    return false;
+  }
+
+  setIsOnboardingInProgress(true);
+  setLoading(false);
+  setShowArrowLoading(true);
+  return true;
+};
+
 const createStripeAccount = async (userId: string, existingAccountId?: string) => {
   console.log('🚀 Making API call to create Stripe account link');
   console.log('📤 Request payload:', {
     userId,
     stripeAccountId: existingAccountId,
-    refresh_url: 'handypay://stripe/callback',
-    return_url: 'handypay://stripe/callback'
+    refresh_url: 'handypay://stripe/refresh',
+    return_url: 'handypay://stripe/success'
   });
 
   const response = await fetch('https://handypay-backend.handypay.workers.dev/api/stripe/create-account-link', {
@@ -49,8 +102,8 @@ const createStripeAccount = async (userId: string, existingAccountId?: string) =
     body: JSON.stringify({
       userId,
       stripeAccountId: existingAccountId, // Pass existing account ID to reuse it
-      refresh_url: 'handypay://stripe/callback',
-      return_url: 'handypay://stripe/callback'
+      refresh_url: 'handypay://stripe/refresh',
+      return_url: 'handypay://stripe/success'
     }),
   });
 
@@ -84,6 +137,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
   const [onboardingCompleted, setOnboardingCompleted] = useState(false);
   const [processingCompletion, setProcessingCompletion] = useState(false); // New state for processing phase
   const [showRowLoading, setShowRowLoading] = useState(false); // Show loading spinner in row items
+  const [showArrowLoading, setShowArrowLoading] = useState(false); // Show loading spinner on arrows (right side)
 
   // Check for incomplete onboarding on mount
   useEffect(() => {
@@ -120,17 +174,34 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         // Set processing completion state immediately for better UX
         setProcessingCompletion(true);
         setLoading(true);
-        setShowRowLoading(true); // Show loading spinner in row items
+        setShowArrowLoading(true); // Show loading spinner on arrows (right side)
 
         // Start polling for onboarding status with immediate feedback
         // Don't set isOnboardingInProgress yet - keep in loading state
         startPollingOnboardingStatus();
+      } else if (event.url.includes('handypay://stripe/refresh')) {
+        console.log('🔄 Stripe onboarding refresh/save for later detected');
+
+        // Handle "Save for Later" case - don't poll for completion
+        setIsOnboardingInProgress(false);
+        setLoading(false);
+        setProcessingCompletion(false);
+        setShowRowLoading(false);
+        setShowArrowLoading(false);
+        setHasIncompleteOnboarding(true); // Mark as incomplete so they can continue later
+
+        Toast.show({
+          type: 'cancel', // Use the custom cancel toast type
+          text1: 'Onboarding Saved',
+          text2: 'You can continue your Stripe onboarding anytime.'
+        });
       } else if (event.url.includes('handypay://stripe/error')) {
         console.log('❌ Stripe onboarding error detected');
         setIsOnboardingInProgress(false);
         setLoading(false);
         setProcessingCompletion(false);
         setShowRowLoading(false);
+        setShowArrowLoading(false);
         Toast.show({
           type: 'error',
           text1: 'Onboarding Failed',
@@ -177,17 +248,21 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
           console.log('⏰ Polling timeout reached, stopping...');
           clearInterval(interval);
           setPollingInterval(null);
-        setIsOnboardingInProgress(false);
-        setLoading(false);
-        setProcessingCompletion(false);
-        setShowRowLoading(false);
-        setShowRowLoading(false);
-        setHasIncompleteOnboarding(true);
-          Toast.show({
-            type: 'success',
-            text1: 'Still Processing',
-            text2: 'Your onboarding is taking longer than expected. Please check back in a few minutes.'
-          });
+
+          // Use setTimeout to avoid setState during render
+          setTimeout(() => {
+            setIsOnboardingInProgress(false);
+            setLoading(false);
+            setProcessingCompletion(false);
+            setShowRowLoading(false);
+            setShowArrowLoading(false);
+            setHasIncompleteOnboarding(true);
+            Toast.show({
+              type: 'success',
+              text1: 'Still Processing',
+              text2: 'Your onboarding is taking longer than expected. Please check back in a few minutes.'
+            });
+          }, 0);
           return newAttempts;
         }
 
@@ -210,7 +285,9 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
       if (userData.stripe_onboarding_completed) {
         console.log('✅ Onboarding completed, navigating to SuccessPage');
 
-        completeOnboarding();
+        const accountId = userData.stripe_account_id || userData.stripeAccountId;
+        const statusData = accountId ? await fetchAccountStatus(accountId) : null;
+        completeOnboarding(accountId, statusData?.accountStatus);
 
         return true; // Indicate completion
       }
@@ -258,7 +335,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
             }
           }
 
-          completeOnboarding();
+          completeOnboarding(accountId, statusData.accountStatus);
 
           return true; // Indicate completion
         }
@@ -272,7 +349,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
   };
 
   // Helper function to handle onboarding completion
-  const completeOnboarding = () => {
+  const completeOnboarding = (stripeAccountId?: string, accountStatus?: any) => {
     console.log('🎉 Completing onboarding - clearing all states');
 
     // Clear polling if active
@@ -286,14 +363,23 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
     setLoading(false);
     setProcessingCompletion(false);
     setShowRowLoading(false);
+    setShowArrowLoading(false);
 
     // Set completed state and show it briefly before navigating
     setOnboardingCompleted(true);
 
     // Navigate to success page after showing completion state for a moment
     setTimeout(() => {
-      console.log('🏁 Navigating to SuccessPage');
-      navigation.replace('SuccessPage');
+      console.log('🏁 Navigating to SuccessPage with account status');
+      navigation.replace('SuccessPage', {
+        accountStatus: {
+          id: stripeAccountId || 'unknown',
+          charges_enabled: accountStatus?.charges_enabled ?? true,
+          payouts_enabled: accountStatus?.payouts_enabled ?? true,
+          details_submitted: accountStatus?.details_submitted ?? true,
+          requirements: accountStatus?.requirements,
+        },
+      });
     }, 800); // Brief delay to show completed state
 
     Toast.show({
@@ -315,11 +401,13 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
     setIsOnboardingInProgress(false);
     setLoading(false);
     setProcessingCompletion(false); // Clear processing state
+    setShowRowLoading(false);
+    setShowArrowLoading(false);
     setHasIncompleteOnboarding(true); // Mark as incomplete so button shows "Continue Onboarding"
     Toast.show({
-      type: 'success',
-      text1: 'Onboarding Cancelled',
-      text2: 'You can continue onboarding anytime by tapping the card above'
+      type: 'cancel',
+      text1: 'Onboarding saved',
+      text2: 'You can continue anytime'
     });
   };
 
@@ -353,30 +441,13 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
     }
 
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Brief delay
+    await new Promise(resolve => setTimeout(resolve, 700)); // Brief delay
 
     // First, check if user already has an incomplete onboarding
     if (hasIncompleteOnboarding && currentStripeAccountId) {
       console.log('🔄 Continuing with existing incomplete onboarding:', currentStripeAccountId);
 
-      const shouldContinue = await new Promise<boolean>((resolve) => {
-        Alert.alert(
-          'Continue to Stripe',
-          'You\'ll be redirected to Stripe to complete your merchant account setup. This will open in the app.',
-          [
-            {
-              text: 'Cancel',
-              style: 'cancel',
-              onPress: () => resolve(false)
-            },
-            {
-              text: 'Continue',
-              style: 'default',
-              onPress: () => resolve(true)
-            }
-          ]
-        );
-      });
+      const shouldContinue = await confirmStripeContinuation();
 
       if (!shouldContinue) {
         setLoading(false);
@@ -391,32 +462,26 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
 
         const result = await WebBrowser.openAuthSessionAsync(
           data.url,
-          'handypay://stripe/callback'
+          'handypay://stripe/callback',
+          {
+            presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
+          }
         );
-        console.log('🔗 Stripe onboarding browser result:', result);
 
-        if (result.type === 'cancel') {
-          console.log('🚫 User cancelled Stripe onboarding in browser');
-          setIsOnboardingInProgress(false);
-          setLoading(false);
-          setProcessingCompletion(false);
-          setShowRowLoading(false);
-          setHasIncompleteOnboarding(true);
-          Toast.show({
-            type: 'info',
-            text1: 'Onboarding Paused',
-            text2: 'You can continue where you left off anytime'
-          });
-          return;
-        }
+        const shouldContinue = handleBrowserResult(result, setIsOnboardingInProgress, setLoading, setProcessingCompletion, setShowRowLoading, setShowArrowLoading, setHasIncompleteOnboarding);
+        if (!shouldContinue) return;
 
-        setIsOnboardingInProgress(true);
-        setLoading(false); // Clear loading state since browser is closed
-        setShowRowLoading(true); // Show loading in row items during polling
         startPollingOnboardingStatus();
       } catch (error) {
         console.error('Error continuing Stripe onboarding:', error);
         Alert.alert('Error', 'Unable to continue Stripe onboarding');
+        // Reset all states on error
+        setIsOnboardingInProgress(false);
+        setProcessingCompletion(false);
+        setShowRowLoading(false);
+        setShowArrowLoading(false);
+        setShowArrowLoading(false);
+        setHasIncompleteOnboarding(true);
       } finally {
         setLoading(false);
       }
@@ -438,26 +503,9 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
       } else {
         console.log('✅ Using valid cached Stripe onboarding URL');
 
-        const shouldContinue = await new Promise<boolean>((resolve) => {
-          Alert.alert(
-            'Continue to Stripe',
-            'You\'ll be redirected to Stripe to complete your merchant account setup. This will open in the app.',
-            [
-              {
-                text: 'Cancel',
-                style: 'cancel',
-                onPress: () => resolve(false)
-              },
-              {
-                text: 'Continue',
-                style: 'default',
-                onPress: () => resolve(true)
-              }
-            ]
-          );
-        });
+        const shouldContinueConfirmation = await confirmStripeContinuation();
 
-        if (!shouldContinue) {
+        if (!shouldContinueConfirmation) {
           setLoading(false);
           return;
         }
@@ -465,32 +513,25 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         try {
           const result = await WebBrowser.openAuthSessionAsync(
             preloadedUrl,
-            'handypay://stripe/callback'
+            'handypay://stripe/callback',
+            {
+              presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
+            }
           );
-          console.log('🔗 Stripe onboarding browser result:', result);
 
-          if (result.type === 'cancel') {
-            console.log('🚫 User cancelled Stripe onboarding in browser');
-            setIsOnboardingInProgress(false);
-            setLoading(false);
-            setProcessingCompletion(false);
-            setShowRowLoading(false);
-            setHasIncompleteOnboarding(true);
-            Toast.show({
-              type: 'info',
-              text1: 'Onboarding Paused',
-              text2: 'You can continue where you left off anytime'
-            });
-            return;
-          }
+          const shouldContinueBrowser = handleBrowserResult(result, setIsOnboardingInProgress, setLoading, setProcessingCompletion, setShowRowLoading, setShowArrowLoading, setHasIncompleteOnboarding);
+          if (!shouldContinueBrowser) return;
 
-          setIsOnboardingInProgress(true);
-          setLoading(false); // Clear loading state since browser is closed
-          setShowRowLoading(true); // Show loading in row items during polling
           startPollingOnboardingStatus();
         } catch (error) {
           console.error('Error opening Stripe URL:', error);
           Alert.alert('Error', 'Unable to open Stripe onboarding link');
+          // Reset all states on error
+          setIsOnboardingInProgress(false);
+          setProcessingCompletion(false);
+          setShowRowLoading(false);
+        setShowArrowLoading(false);
+          setHasIncompleteOnboarding(true);
         } finally {
           setLoading(false);
         }
@@ -506,54 +547,24 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
 
       setCurrentStripeAccountId(data.accountId);
 
-      const shouldContinue = await new Promise<boolean>((resolve) => {
-        Alert.alert(
-          'Continue to Stripe',
-          'You\'ll be redirected to Stripe to complete your merchant account setup. This will open in the app.',
-          [
-            {
-              text: 'Cancel',
-              style: 'cancel',
-              onPress: () => resolve(false)
-            },
-            {
-              text: 'Continue',
-              style: 'default',
-              onPress: () => resolve(true)
-            }
-          ]
-        );
-      });
+      const shouldContinueConfirmation = await confirmStripeContinuation();
 
-      if (!shouldContinue) {
+      if (!shouldContinueConfirmation) {
         setLoading(false);
         return;
       }
 
       const result = await WebBrowser.openAuthSessionAsync(
         data.url,
-        'handypay://stripe/callback'
+        'handypay://stripe/callback',
+        {
+          presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
+        }
       );
-      console.log('🔗 Stripe onboarding browser result:', result);
 
-      if (result.type === 'cancel') {
-        console.log('🚫 User cancelled Stripe onboarding in browser');
-        setIsOnboardingInProgress(false);
-        setLoading(false);
-        setProcessingCompletion(false);
-        setShowRowLoading(false);
-        setHasIncompleteOnboarding(true);
-        Toast.show({
-          type: 'info',
-          text1: 'Onboarding Paused',
-          text2: 'You can continue where you left off anytime'
-        });
-        return;
-      }
+      const shouldContinueBrowser = handleBrowserResult(result, setIsOnboardingInProgress, setLoading, setProcessingCompletion, setShowRowLoading, setShowArrowLoading, setHasIncompleteOnboarding);
+      if (!shouldContinueBrowser) return;
 
-      setIsOnboardingInProgress(true);
-      setLoading(false); // Clear loading state since browser is closed
-      setShowRowLoading(true); // Show loading in row items during polling
       startPollingOnboardingStatus();
     } catch (error) {
       console.error('Stripe onboarding error:', error);
@@ -562,6 +573,11 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
         error instanceof Error ? error.message : 'Failed to start Stripe onboarding. Please try again.',
         [{ text: 'OK' }]
       );
+      // Reset all states on error
+      setIsOnboardingInProgress(false);
+      setProcessingCompletion(false);
+      setShowRowLoading(false);
+      setHasIncompleteOnboarding(true);
     } finally {
       setLoading(false);
     }
@@ -604,14 +620,16 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
           label="Complete identity verification"
           icon={<UserScanSvg width={24} height={24} />}
           completed={onboardingCompleted}
-          loading={showRowLoading}
+          loading={false}
+          arrowLoading={showArrowLoading}
         />
         <View style={styles.separator} />
         <Row
           label="Link bank account"
           icon={<BankSvg width={24} height={24} />}
           completed={onboardingCompleted}
-          loading={showRowLoading}
+          loading={false}
+          arrowLoading={showArrowLoading}
         />
 
       </TouchableOpacity>
@@ -656,11 +674,11 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
           variant="secondary"
           style={[styles.secondaryBtn, (loading || onboardingCompleted) && styles.disabledButton]}
           onPress={() => {
-            // Reset navigation stack to prevent going back to legal pages
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'HomeTabs' }],
-            });
+        // Reset navigation stack to prevent going back to legal pages
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'HomeTabs' }],
+        });
           }}
           disabled={loading || onboardingCompleted}
         >
@@ -671,7 +689,7 @@ export default function GetStartedPage({ navigation }: GetStartedPageProps): Rea
   );
 }
 
-function Row({ label, icon, completed = false, loading = false }: { label: string; icon: React.ReactElement; completed?: boolean; loading?: boolean }): React.ReactElement {
+function Row({ label, icon, completed = false, loading = false, arrowLoading = false }: { label: string; icon: React.ReactElement; completed?: boolean; loading?: boolean; arrowLoading?: boolean }): React.ReactElement {
   return (
     <View style={styles.row}>
       <View style={[styles.rowIconCircle, completed && styles.completedIconCircle]}>
@@ -682,7 +700,9 @@ function Row({ label, icon, completed = false, loading = false }: { label: strin
         )}
       </View>
       <Text style={[styles.rowLabel, completed && styles.completedRowLabel]}>{label}</Text>
-      {completed ? (
+      {arrowLoading ? (
+        <ActivityIndicator size="small" color="#3AB75C" />
+      ) : completed ? (
         <SuccessSvg width={22} height={22} />
       ) : (
         <Ionicons name="chevron-forward" size={22} color="#9ca3af" />
